@@ -17,4 +17,8 @@ StartKin finds the Omarchy machines on your Tailscale network, shows what each o
 - Every apply step is previewed, backed up and confirmed by the user.
 - Secrets and machine-specific data are excluded or flagged by default.
 
+## Development
+
+Bash + jq engine, see [docs/engine.md](docs/engine.md). Clone with `--recurse-submodules` (or `git submodule update --init`), run `./check` (shellcheck, `bash -n`, tests; tests alone: `tests/run.sh`), and `scripts/install-hooks` once per clone to run it on every commit.
+
 MIT licensed.

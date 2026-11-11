@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# startkin: dispatcher. Subcommands are scan, export, apply, peers; see `startkin --help` and docs/engine.md.
+set -uo pipefail
+
+STARTKIN_ROOT=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
+export STARTKIN_ROOT
+# shellcheck source=../lib/common.sh
+source "$STARTKIN_ROOT/lib/common.sh"
+# shellcheck source=../lib/machine.sh
+source "$STARTKIN_ROOT/lib/machine.sh"
+# shellcheck source=../lib/scan.sh
+source "$STARTKIN_ROOT/lib/scan.sh"
+
+usage() {
+  cat <<'EOF'
+Usage: startkin <command> [options]
+
+Commands:
+  scan [--json]   Detect what was added after the Omarchy install (--json: print the manifest)
+  export          Turn a manifest into a profile / install plan
+  apply           Reproduce a manifest on this machine
+  peers           List Tailscale peers that can share a manifest
+
+Options:
+  --version       Print the version
+  -h, --help      Print this help
+
+Only --version, --help and `scan --json` are implemented so far.
+EOF
+}
+
+not_implemented() { die -c 2 "$1: not implemented"; }
+
+cmd_scan() {
+  local json=0 a
+  for a in "$@"; do
+    case $a in
+      --json) json=1 ;;
+      *) die -c 2 "scan: unknown option: $a" ;;
+    esac
+  done
+  ((json)) || not_implemented scan
+  require_cmd jq
+  scan_manifest
+}
+
+main() {
+  case ${1:-} in
+    --version) echo "startkin $(version)" ;;
+    -h | --help) usage ;;
+    scan) shift; cmd_scan "$@" ;;
+    export | apply | peers) not_implemented "$1" ;;
+    "") usage >&2; exit 2 ;;
+    *) printf 'startkin: unknown command: %s\n\n' "$1" >&2; usage >&2; exit 2 ;;
+  esac
+}
+
+main "$@"
