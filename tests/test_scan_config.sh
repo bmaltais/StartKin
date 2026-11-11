@@ -180,6 +180,32 @@ test_output_validates_and_passes_secret_check() {
   assert_status 0 "$ROOT/scripts/check-manifest-secrets" "$T_TMP/m.json"
 }
 
+test_secrets_library_comes_from_startkin_root() {
+  mkdir -p "$T_TMP/fakeroot/lib"
+  printf 'touch "%s/loaded"\n' "$T_TMP" >"$T_TMP/fakeroot/lib/secrets.sh"
+  (
+    export STARTKIN_ROOT=$T_TMP/fakeroot
+    # shellcheck source=../lib/scan/config.sh
+    source "$ROOT/lib/scan/config.sh"
+  )
+  [[ -e $T_TMP/loaded ]] || t_fail "config.sh did not load \${STARTKIN_ROOT}/lib/secrets.sh"
+}
+
+test_walk_leaves_glob_options_as_it_found_them() {
+  setup
+  # the variables scan_config declares (dynamic scope): never walk the real filesystem
+  local CONFIG_DIR=$H CONFIG_OMARCHY=$STARTKIN_OMARCHY_DIR CONFIG_RISK CONFIG_PRIVATE CONFIG_EVIDENCE=()
+  local CONFIG_BASES=("$S" "$CONFIG_OMARCHY/config")
+  shopt -u nullglob dotglob
+  config_walk "" >/dev/null
+  shopt -q nullglob && t_fail "nullglob leaked out of config_walk"
+  shopt -q dotglob && t_fail "dotglob leaked out of config_walk"
+  shopt -s nullglob dotglob
+  config_walk "" >/dev/null
+  shopt -q nullglob || t_fail "nullglob was switched off by config_walk"
+  shopt -q dotglob || t_fail "dotglob was switched off by config_walk"
+}
+
 test_missing_config_dir_is_empty() {
   setup
   rm -rf "$H"

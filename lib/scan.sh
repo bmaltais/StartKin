@@ -17,7 +17,7 @@ scan_run_one() {
   name=$(basename "$file" .sh)
   fn=scan_${name//-/_}
   out=$(
-    # shellcheck disable=SC1090
+    # shellcheck disable=SC1090 # the scanner file is chosen at run time (scan_dir); its path cannot be known statically
     source "$file" || exit 1
     declare -F "$fn" >/dev/null || { echo "startkin: scanner '$name': $file does not define $fn" >&2; exit 1; }
     "$fn"

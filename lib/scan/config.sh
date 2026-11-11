@@ -12,6 +12,9 @@
 # STARTKIN_CONFIG_MAX_FILES (default 500): an unshipped directory with more files is assumed to be state or cache and skipped.
 # shellcheck shell=bash
 
+# shellcheck source=../secrets.sh
+source "${STARTKIN_ROOT:?}/lib/secrets.sh"
+
 CONFIG_SCAN_MAX_BYTES=2097152 # files above this are not content-scanned and are marked private
 
 # config_category REL : category tag for a path relative to ~/.config
@@ -209,11 +212,17 @@ config_visit() {
 
 # config_walk REL : visit every entry of a directory under ~/.config ("" is the root)
 config_walk() {
-  local rel=$1 e
+  local rel=$1 e had_nullglob=0 had_dotglob=0
+  shopt -q nullglob && had_nullglob=1
+  shopt -q dotglob && had_dotglob=1
   shopt -s nullglob dotglob
   for e in "$CONFIG_DIR${rel:+/$rel}"/*; do
     config_visit "${e#"$CONFIG_DIR"/}"
   done
+  # restore the caller's options (config_visit recurses into config_walk, so each level puts back what it found)
+  ((had_nullglob)) || shopt -u nullglob
+  ((had_dotglob)) || shopt -u dotglob
+  return 0
 }
 
 scan_config() {
@@ -222,9 +231,5 @@ scan_config() {
   local CONFIG_BASES=("${STARTKIN_SKEL_DIR:-/etc/skel}/.config" "$CONFIG_OMARCHY/config")
   local CONFIG_RISK CONFIG_PRIVATE CONFIG_EVIDENCE=()
   [[ -d $CONFIG_DIR ]] || { echo '[]'; return 0; }
-  if ! declare -F secrets_path_denied >/dev/null; then
-    # shellcheck source=../secrets.sh
-    source "$(dirname "${BASH_SOURCE[0]}")/../secrets.sh"
-  fi
   (config_walk "") | jq -s '.'
 }
