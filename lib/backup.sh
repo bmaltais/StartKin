@@ -4,6 +4,7 @@
 # Every apply run that changes a file opens one backup set, $STARTKIN_STATE_DIR/backups/ID (default
 # ~/.local/state/startkin/backups/ID, mode 700, ID is a UTC timestamp). It holds a journal ("replaced|created<TAB>path", in
 # apply order) and a full copy of every file or directory that was replaced, under files/<path relative to home>.
+# A "hashes" file records "journal line<TAB>hash" of what apply left at each path, so rollback can tell a file edited since.
 # Rollback walks the journal backwards: restores what was replaced, removes what was created. It only touches paths inside home.
 # Needs lib/common.sh, ui.sh. Source this.
 # shellcheck shell=bash
@@ -43,6 +44,38 @@ backup_save() {
   fi
 }
 
+# backup_hash PATH : a content hash of a file or directory tree (empty when PATH is missing)
+backup_hash() {
+  [[ -e $1 || -L $1 ]] || return 0
+  if [[ -d $1 && ! -L $1 ]]; then
+    (cd "$1" && find . \( -type f -o -type l \) -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum 2>/dev/null | sha256sum | cut -d' ' -f1)
+  else
+    sha256sum -- "$1" 2>/dev/null | cut -d' ' -f1
+  fi
+}
+
+# backup_note_after DEST : record the hash of what apply just left at DEST (called after a successful install), keyed by
+# the journal line of that change
+backup_note_after() {
+  [[ -n $BACKUP_DIR ]] || return 0
+  printf '%s\t%s\n' "$(grep -c '' "$BACKUP_DIR/journal")" "$(backup_hash "$1")" >>"$BACKUP_DIR/hashes"
+}
+
+# backup_hash_of SET LINE : the hash recorded after apply for journal line LINE, empty when none
+backup_hash_of() { [[ -f $1/hashes ]] && awk -F'\t' -v n="$2" '$1 == n { h = $2 } END { print h }' "$1/hashes"; return 0; }
+
+# backup_restore SET DEST : put the backed-up copy back at DEST without ever leaving DEST half-done: copy next to it, then swap.
+backup_restore() {
+  local src=$1/files/${2#"$HOME"/} tmp="$2.startkin-restore.$$"
+  [[ -e $src || -L $src ]] || return 1
+  mkdir -p -- "$(dirname -- "$2")" || return 1
+  rm -rf -- "$tmp"
+  cp -a -- "$src" "$tmp" || { rm -rf -- "$tmp"; return 1; }
+  if rm -rf -- "$2" && mv -- "$tmp" "$2"; then return 0; fi
+  rm -rf -- "$tmp"
+  return 1
+}
+
 # backup_sets : set ids, oldest first
 backup_sets() {
   local root d
@@ -77,7 +110,7 @@ BACKUP_USAGE='Usage: startkin rollback [ID|latest] [--yes] [--dry-run]
 
 # cmd_rollback [ID|latest] [--yes] [--dry-run] | --list
 cmd_rollback() {
-  local id="" yes=0 dry=0 list=0 set journal action dest rel n=0
+  local id="" yes=0 dry=0 list=0 set journal action dest want ln n=0
   while (($#)); do
     case $1 in
       -h | --help) echo "$BACKUP_USAGE"; return 0 ;;
@@ -105,7 +138,10 @@ cmd_rollback() {
 
   printf 'Rolling back %s:\n' "$id"
   while IFS=$'\t' read -r action dest; do
-    [[ $dest == "$HOME"/* && $dest != *"/../"* && $dest != */.. ]] || die "rollback: refusing path outside home: $dest"
+    apply_home_path_ok "$dest" || die "rollback: refusing path outside home: $dest"
+    if [[ $action == replaced && ! -e $set/files/${dest#"$HOME"/} && ! -L $set/files/${dest#"$HOME"/} ]]; then
+      die "rollback: the backup copy of $(tilde_text "$dest") is missing from $set/files; nothing was changed"
+    fi
     case $action in
       replaced) printf '  restore %s\n' "$(tilde_text "$dest")" ;;
       created) printf '  remove  %s\n' "$(tilde_text "$dest")" ;;
@@ -116,14 +152,18 @@ cmd_rollback() {
   if ! ((yes)) && ! ui_confirm "Roll back $n change(s)?"; then return 1; fi
 
   # Backwards, so a path touched twice ends as it was before the first change.
-  while IFS=$'\t' read -r action dest; do
-    rel=${dest#"$HOME"/}
-    rm -rf -- "$dest"
-    if [[ $action == replaced ]]; then
-      mkdir -p -- "$(dirname -- "$dest")"
-      cp -a -- "$set/files/$rel" "$dest" || die "rollback: could not restore $(tilde_text "$dest") from $set/files/$rel"
+  while IFS=$'\t' read -r ln action dest; do
+    want=$(backup_hash_of "$set" "$ln")
+    if [[ -n $want && -e $dest && $(backup_hash "$dest") != "$want" ]]; then
+      printf '  %s changed since apply wrote it\n' "$(tilde_text "$dest")"
+      if ! ui_confirm "Overwrite $(tilde_text "$dest") anyway?"; then printf '  kept     %s\n' "$(tilde_text "$dest")"; continue; fi
     fi
-  done < <(tac "$journal")
+    if [[ $action == replaced ]]; then
+      backup_restore "$set" "$dest" || die "rollback: could not restore $(tilde_text "$dest") from $set/files; it was left as it was"
+    else
+      rm -rf -- "$dest"
+    fi
+  done < <(awk '{ print NR "\t" $0 }' "$journal" | tac)
   now_utc >"$set/rolled-back"
   printf 'Rolled back %s.\n' "$id"
 }

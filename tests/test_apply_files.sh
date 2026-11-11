@@ -31,13 +31,68 @@ test_plugin_install_is_never_covered_by_global_yes() {
   assert_contains "$(calls)" "omarchy plugin add https://example.com/foo.git"
 }
 
-test_plugin_enabled_and_pinned_as_recorded() {
+test_plugin_is_pinned_before_it_is_enabled() {
   setup; answer y
-  local sha=0123456789abcdef0123456789abcdef01234567
+  local sha=0123456789abcdef0123456789abcdef01234567 c
   mf "$(plugin io.x.foo https://example.com/foo.git "[\"rev $sha\",\"enabled in shell.json\"]")"
   assert_status 0 run_apply "$T_TMP/m.json"
-  assert_contains "$(calls)" "omarchy plugin add https://example.com/foo.git --yes --enable"
-  assert_contains "$(calls)" "git -C $HOME/.config/omarchy/plugins/io.x.foo checkout $sha"
+  c=$(calls)
+  assert_contains "$c" "omarchy plugin add https://example.com/foo.git --yes"
+  assert_eq "" "$(only_calls -e '--enable')"
+  assert_contains "$c" "git -C $HOME/.config/omarchy/plugins/io.x.foo checkout $sha"
+  assert_contains "$c" "omarchy plugin enable io.x.foo"
+  assert_eq "add checkout enable" "$(grep -oE 'plugin add|checkout|plugin enable' "$CALLS" | sed 's/plugin //' | paste -sd' ')"
+}
+
+test_plugin_is_not_enabled_when_the_pin_fails() {
+  setup; answer y
+  local sha=0123456789abcdef0123456789abcdef01234567
+  stub git 'echo "git $*" >>"$CALLS"; exit 1'
+  mf "$(plugin io.x.foo https://example.com/foo.git "[\"rev $sha\",\"enabled in shell.json\"]")"
+  assert_status 1 run_apply "$T_TMP/m.json"
+  assert_contains "$T_OUT" "failed    plugin:io.x.foo"
+  assert_eq "" "$(only_calls 'plugin enable')"
+}
+
+test_plugin_without_enabled_evidence_is_not_enabled() {
+  setup; answer y
+  mf "$(plugin io.x.foo https://example.com/foo.git)"
+  assert_status 0 run_apply "$T_TMP/m.json"
+  assert_eq "" "$(only_calls 'plugin enable')"
+}
+
+test_plugin_copy_needs_allow_plugins_not_just_yes() {
+  setup; peer_setup; answer ""
+  mkdir -p "$REMOTE/.config/omarchy/plugins/cp"
+  echo '{}' >"$REMOTE/.config/omarchy/plugins/cp/manifest.json"
+  mf "$(it plugin:cp plugin plugin '{"type":"copy","path":"~/.config/omarchy/plugins/cp"}')"
+  assert_status 0 run_apply --from-peer box --yes
+  [[ ! -e $STARTKIN_PLUGINS_DIR/cp ]] || t_fail "plugin copy installed on bare --yes"
+  assert_status 0 run_apply --from-peer box --yes --allow-plugins
+  [[ -e $STARTKIN_PLUGINS_DIR/cp/manifest.json ]] || t_fail "plugin copy not installed with --allow-plugins"
+}
+
+test_user_unit_copy_needs_allow_units_not_just_yes() {
+  setup; peer_setup; answer ""
+  mkdir -p "$REMOTE/.config/systemd/user"
+  echo "[Service]" >"$REMOTE/.config/systemd/user/mine.service"
+  mf "$(svc user mine.service '{"type":"copy","path":"~/.config/systemd/user/mine.service"}')"
+  assert_status 0 run_apply --from-peer box --yes
+  [[ ! -e $HOME/.config/systemd/user/mine.service ]] || t_fail "unit file installed on bare --yes"
+  assert_eq "" "$(only_calls 'enable')"
+  assert_status 0 run_apply --from-peer box --yes --allow-units
+  assert_contains "$(calls)" "systemctl --user enable --now mine.service"
+}
+
+test_symlinked_parent_cannot_redirect_a_write_out_of_home() {
+  setup; peer_setup; answer y
+  mkdir -p "$T_TMP/outside" "$HOME/.config"
+  ln -s "$T_TMP/outside" "$HOME/.config/evil"
+  remote evil/x.conf "pwn"
+  mf "$(cfg evil/x.conf)"
+  assert_status 0 run_apply --from-peer box
+  [[ ! -e $T_TMP/outside/x.conf ]] || t_fail "wrote through a symlinked parent"
+  assert_contains "$T_OUT" "skipped   config:evil/x.conf"
 }
 
 test_plugin_already_present_and_bad_values_skipped() {
@@ -263,6 +318,31 @@ test_rollback_by_id_list_and_errors() {
   assert_status 1 "$BIN" rollback no-such-id --yes
   assert_status 0 "$BIN" rollback "$id" --yes
   [[ ! -e $HOME/.config/foo/a.conf ]] || t_fail "rollback by id did not remove the created file"
+}
+
+test_rollback_asks_before_overwriting_a_file_changed_since_apply() {
+  setup; peer_setup; answer y
+  remote foo/a.conf "color=red"
+  local_cfg foo/a.conf "color=blue"
+  mf "$(cfg foo/a.conf)"
+  assert_status 0 run_apply --from-peer box
+  echo "edited later" >"$HOME/.config/foo/a.conf"
+  answer $'y\nn'
+  assert_status 0 run_apply_rollback latest
+  assert_contains "$T_OUT" "changed since"
+  assert_eq "edited later" "$(content foo/a.conf)"
+}
+
+test_rollback_with_a_missing_backup_copy_keeps_the_file() {
+  setup; peer_setup; answer y
+  remote foo/a.conf "color=red"
+  local_cfg foo/a.conf "color=blue"
+  mf "$(cfg foo/a.conf)"
+  assert_status 0 run_apply --from-peer box
+  rm -rf "$STARTKIN_STATE_DIR"/backups/*/files
+  assert_status 1 run_apply_rollback latest --yes
+  assert_contains "$T_ERR" "backup copy"
+  assert_eq "color=red" "$(content foo/a.conf)"
 }
 
 # ---- services --------------------------------------------------------------------------------------------------------

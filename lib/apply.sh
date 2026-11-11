@@ -4,7 +4,7 @@
 # Stages for plugins, config and services (#14) live in lib/apply_more.sh, backups and rollback in lib/backup.sh.
 # Needs lib/common.sh, drift.sh, machine.sh, target.sh, peers.sh, ui.sh. Source this.
 #
-# Shape (so #14 can add stages without touching the driver):
+# Shape (a stage is added by naming it in APPLY_STAGES and defining apply_stage_NAME; the driver is not touched):
 #   APPLY_STAGES        stage names in apply order (docs/design.md "Apply order")
 #   apply_stage_of CAT TYPE   which stage an item belongs to (empty: nothing applies it)
 #   apply_stage_NAME ITEMS_JSON   runs one stage over a JSON array of its items; reports each item with apply_record
@@ -17,11 +17,12 @@ APPLY_TILDE='~' # a literal tilde for patterns (shellcheck SC2088)
 
 # Run state (one apply per process).
 APPLY_DRY=0 APPLY_YES=0 APPLY_PEER="" APPLY_DRIFT="" APPLY_RES="" APPLY_TMP="" APPLY_WARN_IDS=""
-# Consents --yes does not give (docs/engine.md "Apply"): plugin installs and overwriting machine-specific files.
-APPLY_ALLOW_PLUGINS=0 APPLY_ALLOW_MACHINE=0
+# Consents --yes does not give (docs/engine.md "Apply"): plugin code, overwriting machine-specific files, user systemd unit
+# files, and builds or downloads that are not pinned to a ref or checksum.
+APPLY_ALLOW_PLUGINS=0 APPLY_ALLOW_MACHINE=0 APPLY_ALLOW_UNITS=0 APPLY_ALLOW_UNPINNED=0
 
 # Result of the last apply_plan: commands to run, whether they run downloaded code, a note / reason, and the class of
-# consent the commands need (empty: the ordinary "Run this?" that --yes pre-approves; plugins: --allow-plugins).
+# consent the commands need (empty: the ordinary "Run this?" that --yes pre-approves; else a class, see apply_confirm_for).
 APPLY_CMDS=() APPLY_CODE=0 APPLY_NOTE="" APPLY_CONSENT=""
 
 # ---- small helpers -------------------------------------------------------------------------------------------------
@@ -48,9 +49,20 @@ apply_path() {
   esac
 }
 
-# apply_home_path_ok P : the expanded path is inside home and has no .. segment (only home destinations are written)
+# apply_home_path_ok P : the expanded path is inside home, has no .. segment, and still is inside home once symlinks in
+# its existing parents are resolved (a symlinked directory cannot redirect a write elsewhere)
 apply_home_path_ok() {
-  [[ $1 != *"/../"* && $1 != */.. && $1 == "$HOME"/* ]]
+  local r h
+  [[ $1 != *"/../"* && $1 != */.. && $1 == "$HOME"/* ]] || return 1
+  h=$(realpath -m -- "$HOME") && r=$(realpath -m -- "$1") || return 1
+  [[ $r == "$h"/* ]]
+}
+
+# apply_resolved_under P ROOT : P is inside ROOT after resolving symlinks in both
+apply_resolved_under() {
+  local r d
+  r=$(realpath -m -- "$1") && d=$(realpath -m -- "$2") || return 1
+  [[ $r == "$d"/* ]]
 }
 
 # apply_record ID STATUS DETAIL : report one item. STATUS: installed | present | planned | skipped | failed
@@ -73,30 +85,38 @@ apply_show() { local c; for c in "$@"; do printf '    $ %s\n' "$(tilde_text "$c"
 # apply_confirm PROMPT : --yes pre-approves; otherwise ask (end of input is no)
 apply_confirm() { ((APPLY_YES)) || ui_confirm "$1"; }
 
-# apply_confirm_for CLASS PROMPT : like apply_confirm, but a class that --yes does not cover (plugins, machine) needs its own
-# flag (--allow-plugins, --allow-machine-specific) or an interactive yes
+# apply_confirm_for CLASSES PROMPT : like apply_confirm, but classes that --yes does not cover need their own flag or an
+# interactive yes. CLASSES is a space-separated list (empty: the ordinary prompt). When every class has its flag nothing is
+# asked; otherwise one prompt. plugins: --allow-plugins; machine: --allow-machine-specific; units: --allow-units;
+# unpinned: --allow-unpinned.
 apply_confirm_for() {
-  case $1 in
-    plugins) ((APPLY_ALLOW_PLUGINS)) || ui_confirm "$2" ;;
-    machine) ((APPLY_ALLOW_MACHINE)) || ui_confirm "$2" ;;
-    *) apply_confirm "$2" ;;
-  esac
-}
-
-# apply_exec CMD... : run each command line (bash -c) in order, stop at the first failure
-apply_exec() {
-  local c
-  for c in "$@"; do bash -c "$c" || return 1; done
+  local c unmet=0 any=0
+  for c in $1; do
+    any=1
+    case $c in
+      plugins) ((APPLY_ALLOW_PLUGINS)) || unmet=1 ;;
+      machine) ((APPLY_ALLOW_MACHINE)) || unmet=1 ;;
+      units) ((APPLY_ALLOW_UNITS)) || unmet=1 ;;
+      unpinned) ((APPLY_ALLOW_UNPINNED)) || unmet=1 ;;
+      *) unmet=1 ;;
+    esac
+  done
+  ((any)) || { apply_confirm "$2"; return; }
+  ((!unmet)) || ui_confirm "$2"
 }
 
 # The package helper and the visible-terminal launcher; STARTKIN_OMARCHY / STARTKIN_FLOAT_CMD override them (tests).
 apply_omarchy() { echo "${STARTKIN_OMARCHY:-omarchy}"; }
 apply_float() { echo "${STARTKIN_FLOAT_CMD:-omarchy-launch-floating-terminal-with-presentation}"; }
 
+# apply_in_terminal : true when a privileged command can run right here (stdin is a terminal, or there is no floating
+# terminal launcher to use instead)
+apply_in_terminal() { [[ -t 0 ]] || ! command -v "$(apply_float)" >/dev/null 2>&1; }
+
 # apply_priv_exec CMD : run a package-manager command that needs sudo. In a terminal it runs there (sudo prompts in
 # place). Without one it goes through Omarchy's visible floating terminal (docs/omarchy-plugins.md section 3), as StartDrive does.
 apply_priv_exec() {
-  if [[ -t 0 ]] || ! command -v "$(apply_float)" >/dev/null 2>&1; then
+  if apply_in_terminal; then
     bash -c "$1"
   else
     "$(apply_float)" "$1"
@@ -105,7 +125,7 @@ apply_priv_exec() {
 
 # apply_priv_line CMD : what apply_priv_exec will run, as shown to the user
 apply_priv_line() {
-  if [[ -t 0 ]] || ! command -v "$(apply_float)" >/dev/null 2>&1; then
+  if apply_in_terminal; then
     printf '%s' "$1"
   else
     apply_q "$(apply_float)" "$1"
@@ -169,13 +189,16 @@ apply_need() { command -v "$1" >/dev/null 2>&1 || { APPLY_NOTE="$1 not found on 
 # apply_bad FIELD : reject a manifest value that fails validation
 apply_bad() { APPLY_NOTE="invalid $1 in manifest"; return 11; }
 
+# apply_ver_opt_ok V : V is empty or a valid version
+apply_ver_opt_ok() { [[ -z $1 ]] || apply_ver_ok "$1"; }
+
 apply_plan_cargo() {
   local p v locked
   p=$(apply_f "$1" .install.crate) v=$(apply_f "$1" .version) locked=$(apply_f "$1" .install.locked)
   apply_name_ok "$p" || { apply_bad crate; return; }
-  [[ -z $v ]] || apply_ver_ok "$v" || { apply_bad version; return; }
+  apply_ver_opt_ok "$v" || { apply_bad version; return; }
   apply_need cargo || return
-  if cargo install --list 2>/dev/null | grep -q "^$p v"; then APPLY_NOTE="already installed"; return 10; fi
+  if cargo install --list 2>/dev/null | awk -v p="$p" '$1 == p && $2 ~ /^v/ { f = 1 } END { exit !f }'; then APPLY_NOTE="already installed"; return 10; fi
   local a=(cargo install)
   [[ $locked == true ]] && a+=(--locked)
   [[ -n $v ]] && a+=(--version "$v")
@@ -186,7 +209,7 @@ apply_plan_go() {
   local m v bin dir
   m=$(apply_f "$1" .install.module) v=$(apply_f "$1" .version)
   apply_name_ok "$m" || { apply_bad module; return; }
-  [[ -z $v ]] || apply_ver_ok "$v" || { apply_bad version; return; }
+  apply_ver_opt_ok "$v" || { apply_bad version; return; }
   apply_need go || return
   bin=${m##*/}
   dir=${GOBIN:-${GOPATH:+${GOPATH%%:*}/bin}}
@@ -199,7 +222,7 @@ apply_plan_npm() {
   local p v
   p=$(apply_f "$1" .install.package) v=$(apply_f "$1" .version)
   apply_name_ok "$p" || { apply_bad package; return; }
-  [[ -z $v ]] || apply_ver_ok "$v" || { apply_bad version; return; }
+  apply_ver_opt_ok "$v" || { apply_bad version; return; }
   apply_need npm || return
   if npm ls -g --depth=0 "$p" >/dev/null 2>&1; then APPLY_NOTE="already installed"; return 10; fi
   APPLY_CMDS=("$(apply_q npm install -g "$p${v:+@$v}")")
@@ -210,13 +233,13 @@ apply_plan_pyvenv() {
   local t=$1 p v
   p=$(apply_f "$2" .install.package) v=$(apply_f "$2" .version)
   apply_name_ok "$p" || { apply_bad package; return; }
-  [[ -z $v ]] || apply_ver_ok "$v" || { apply_bad version; return; }
+  apply_ver_opt_ok "$v" || { apply_bad version; return; }
   apply_need "$t" || return
   if [[ $t == uv ]]; then
-    if uv tool list 2>/dev/null | grep -q "^$p "; then APPLY_NOTE="already installed"; return 10; fi
+    if uv tool list 2>/dev/null | awk -v p="$p" '$1 == p { f = 1 } END { exit !f }'; then APPLY_NOTE="already installed"; return 10; fi
     APPLY_CMDS=("$(apply_q uv tool install "$p${v:+==$v}")")
   else
-    if pipx list --short 2>/dev/null | grep -q "^$p "; then APPLY_NOTE="already installed"; return 10; fi
+    if pipx list --short 2>/dev/null | awk -v p="$p" '$1 == p { f = 1 } END { exit !f }'; then APPLY_NOTE="already installed"; return 10; fi
     APPLY_CMDS=("$(apply_q pipx install "$p${v:+==$v}")")
   fi
 }
@@ -227,7 +250,7 @@ apply_plan_mise() {
   local t v
   t=$(apply_f "$1" .install.tool) v=$(apply_f "$1" .version)
   apply_name_ok "$t" || { apply_bad tool; return; }
-  [[ -z $v ]] || apply_ver_ok "$v" || { apply_bad version; return; }
+  apply_ver_opt_ok "$v" || { apply_bad version; return; }
   apply_need mise || return
   if [[ -n $(mise ls --installed "$t" 2>/dev/null) ]]; then APPLY_NOTE="already installed"; return 10; fi
   APPLY_CMDS=("$(apply_q mise use -g "$t${v:+@$v}")")
@@ -247,7 +270,7 @@ apply_plan_git_build() {
   if [[ -d $dir/.git ]]; then APPLY_NOTE="source already cloned at $dir; not rebuilt"; return 10; fi
   APPLY_CODE=1
   APPLY_CMDS=("$(apply_q git clone -- "$url" "$dir")")
-  if [[ -n $ref ]]; then APPLY_CMDS+=("$(apply_q git -C "$dir" checkout "$ref")"); else APPLY_NOTE="unpinned: no ref recorded, builds the default branch"; fi
+  if [[ -n $ref ]]; then APPLY_CMDS+=("$(apply_q git -C "$dir" checkout "$ref")"); else APPLY_NOTE="unpinned: no ref recorded, builds the default branch (needs --allow-unpinned or an interactive yes)"; APPLY_CONSENT=unpinned; fi
   while IFS= read -r b; do
     [[ -n $b ]] && APPLY_CMDS+=("cd $(apply_q "$dir") && $b")
   done < <(jq -r '.install.build // [] | .[]' <<<"$1")
@@ -274,7 +297,8 @@ apply_plan_download() {
   if [[ -n $sha ]]; then
     APPLY_CMDS+=("cd $(apply_q "$APPLY_TMP") && printf '%s  %s\\n' $(apply_q "${sha,,}" "$name") | sha256sum -c -")
   else
-    APPLY_NOTE="no sha256 recorded: the download is not verified"
+    APPLY_NOTE="no sha256 recorded: the download is not verified (needs --allow-unpinned or an interactive yes)"
+    APPLY_CONSENT=unpinned
   fi
   APPLY_CMDS+=("$(apply_q install -Dm755 "$APPLY_TMP/$name" "$dest")")
 }
@@ -411,16 +435,18 @@ apply_stage_packages() {
 # ---- driver --------------------------------------------------------------------------------------------------------
 
 APPLY_USAGE='Usage: startkin apply MANIFEST | --from-peer PEER [--dry-run] [--yes] [--only IDS]
-                     [--allow-plugins] [--allow-machine-specific]
+                     [--allow-plugins] [--allow-machine-specific] [--allow-units] [--allow-unpinned]
   MANIFEST         a manifest file (startkin export --out FILE)
   --from-peer PEER fetch the manifest from a Tailscale peer (startkin peers); also the source of config file contents
   --dry-run        show every command; install nothing, ask nothing
-  --yes            pre-approve every "Run this?" prompt (packages, registry tools, source builds, downloads, services);
-                   read a --dry-run first
+  --yes            pre-approve every ordinary "Run this?" prompt (packages, registry tools, pinned builds and verified
+                   downloads, services from packages); read a --dry-run first
   --only IDS       comma-separated item ids to apply
   --allow-plugins  also pre-approve plugin installs (unsandboxed code; --yes alone still asks)
   --allow-machine-specific
                    also pre-approve overwriting machine-specific config (monitors, GPU settings); --yes alone still asks
+  --allow-units    also pre-approve copied user systemd unit files (enabled and started); --yes alone still asks
+  --allow-unpinned also pre-approve git builds with no recorded ref and downloads with no sha256; --yes alone still asks
   Config files are shown as a diff, backed up, and can be undone with: startkin rollback [ID|latest]'
 
 # apply_stage_title NAME : heading shown before a stage
@@ -528,7 +554,7 @@ apply_summary() {
 
 cmd_apply() {
   local file="" only="" tmp="" rc
-  APPLY_DRY=0 APPLY_YES=0 APPLY_PEER="" APPLY_ALLOW_PLUGINS=0 APPLY_ALLOW_MACHINE=0
+  APPLY_DRY=0 APPLY_YES=0 APPLY_PEER="" APPLY_ALLOW_PLUGINS=0 APPLY_ALLOW_MACHINE=0 APPLY_ALLOW_UNITS=0 APPLY_ALLOW_UNPINNED=0
   while (($#)); do
     case $1 in
       -h | --help) echo "$APPLY_USAGE"; return 0 ;;
@@ -536,6 +562,8 @@ cmd_apply() {
       --yes | -y) APPLY_YES=1 ;;
       --allow-plugins) APPLY_ALLOW_PLUGINS=1 ;;
       --allow-machine-specific) APPLY_ALLOW_MACHINE=1 ;;
+      --allow-units) APPLY_ALLOW_UNITS=1 ;;
+      --allow-unpinned) APPLY_ALLOW_UNPINNED=1 ;;
       --from-peer | --only)
         (($# >= 2)) || die -c 2 "apply: $1 needs a value"
         if [[ $1 == --only ]]; then only=$2; else APPLY_PEER=$2; fi

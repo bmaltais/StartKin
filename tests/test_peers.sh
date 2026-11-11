@@ -116,6 +116,13 @@ test_fetch_engine_major_mismatch() {
   assert_contains "$T_ERR" "version mismatch"
 }
 
+test_fetch_rejects_a_version_line_that_is_not_startkin() {
+  fake_tailscale; BOX_VERSION=9 fake_ssh
+  stub ssh 'if [[ $* == *--version* ]]; then echo "bash: weird 1.0"; else echo "{}"; fi'
+  assert_status 14 "$BIN" peers fetch box
+  assert_contains "$T_ERR" "not a startkin"
+}
+
 test_fetch_minor_difference_warns() {
   fake_tailscale; BOX_VERSION=0.99.0 fake_ssh
   assert_status 0 "$BIN" peers fetch box
