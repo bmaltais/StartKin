@@ -26,7 +26,7 @@ test_unknown_command() {
 
 test_stubs_not_implemented() {
   local c
-  for c in export apply peers scan; do
+  for c in export apply scan; do
     assert_status 2 "$BIN" "$c"
     assert_contains "$T_ERR" "not implemented"
   done
