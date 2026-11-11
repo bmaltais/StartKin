@@ -9,6 +9,7 @@ The engine is bash + jq (decision: no compiled language; revisit only if it outg
 | `bin/startkin` | Dispatcher: `scan`, `export`, `apply`, `peers`, `--version`, `--help`. `--version`, `--help`, `scan --json`, `adopt` and `track install` are real; the rest print `not implemented` and exit 2. |
 | `lib/common.sh` | Shared helpers: `log`, `warn`, `die [-c CODE]`, `require_cmd`, `version`, `now_utc`. |
 | `lib/drift.sh` | Omarchy version drift: `drift_compare_versions`, `drift_compare_machines`, `drift_warn`, `drift_check_manifest` (see "Version drift"). |
+| `lib/target.sh` | Target-awareness: `target_check_manifest`, `target_filter_manifest`, `machine_libc` (see "Target awareness"). |
 | `lib/machine.sh` | Machine info for the manifest header (hostname, Omarchy version from pacman, arch, GPU vendors from `lspci`, form factor). |
 | `lib/scan.sh` | Scanner discovery and manifest assembly. |
 | `lib/registry.sh` | User-confirmed provenance registry and the scan overlay (`docs/adopt.md`). |
@@ -37,6 +38,17 @@ The dispatcher auto-discovers every `lib/scan/*.sh` (sorted by file name). To ad
 ## Version drift
 
 Each manifest records the source's `machine.omarchy_version`; the scan baseline is always the scanning machine's own Omarchy, so a manifest only lists what was added on top of that version. When a manifest is applied on a machine with a different version, `lib/drift.sh` compares the two (`sort -V`: `same`, `source-older`, `source-newer`, `unknown`) and `drift_warn` warns once up front, never failing. Decision on items that became Omarchy defaults in a newer target version: they are not dropped or errored. Apply's normal "already present on the target" check treats them as satisfied and skips them, and when the versions differ the report says so ("now in Omarchy defaults or already installed"). Items from a newer source than the target warn that they may need things the target lacks. An `unknown` version on either side warns that defaults cannot be compared. Target-awareness (#15) reuses `drift_compare_machines`.
+
+## Target awareness
+
+`lib/target.sh` (#15) compares a manifest with the machine it would be applied on. `target_check_manifest MANIFEST TARGET_JSON` prints `{target, drift, summary{ok,warn,incompatible}, items[{id, status, reasons[{code,message}]}]}`, one entry per manifest item. `TARGET_JSON` is `machine_json_with_libc` (the manifest machine object plus `libc`: `glibc`, `musl` or empty; the manifest itself has no libc field). `drift` is `drift_compare_machines`. Status `incompatible` means it cannot work: apply must skip it and the UI hides it. `warn` means it may not work or is pointless: apply and the UI show it flagged. Reason codes:
+
+- `arch`: release-binary, appimage and copied binaries (`repo-tool` copy of cli/gui-app/runtime) from another architecture are incompatible; pacman/aur packages warn. `arm64`/`aarch64` and `amd64`/`x86_64` are the same.
+- `libc`: on a musl target, prebuilt binaries whose URL/path does not mention musl are incompatible.
+- `gpu`: packages named for one vendor (`nvidia*`, `cuda*`, `vulkan-radeon`, `intel-media-driver`, ...) are incompatible when the target has no such GPU, warn when the target GPU list is empty (undetected).
+- `form-factor`: laptop-oriented packages/services (`tlp`, `brightnessctl`, ...) warn on non-laptops.
+
+Omarchy version drift is reported once in `drift`, not per item. `target_filter_manifest MANIFEST TARGET_JSON` prints the manifest minus the incompatible items. The rules are name and type heuristics; extend the lists in `lib/target.sh` as false negatives show up.
 
 ## Tests
 
