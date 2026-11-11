@@ -32,7 +32,7 @@ AI classifies, groups, explains and flags target mismatches. It only handles ite
 Decided (#11): yes. A snapshot is just a manifest in a file, written by `startkin export --out FILE` (mode 600, replaced atomically). Cost is small because the manifest format is already the transport format: apply and peers fetch read the same JSON whether it came from a live peer or a file. `startkin export --from FILE` re-exports a snapshot after checking it is a manifest and running the same secrets gate, so a hand-edited or old file cannot smuggle a secret out. Snapshots hold no secrets by policy (`docs/secrets-policy.md`), but they still describe the whole machine (installed software, paths, hostname): keep them in a private repo, never a public one. A snapshot is stale the moment it is written; apply (#13/#14) must show its `generated_at` and `machine.omarchy_version` and compare them to the target (#15, #29).
 
 ## Apply order
-Packages, then tools from repos, then plugins, then config, then services. Config applies per item with diff preview and backup.
+Packages, then tools from repos, then plugins, then config, then services. Config applies per item with diff preview and backup (content is fetched from the peer at apply time; `startkin rollback` undoes a run; see docs/engine.md "Apply").
 
 ## Open questions
 - ~~Online peer only, or also saved manifests?~~ Both: see Saved snapshots.
