@@ -22,6 +22,12 @@ source "$STARTKIN_ROOT/lib/track.sh"
 source "$STARTKIN_ROOT/lib/peers.sh"
 # shellcheck source=../lib/export.sh
 source "$STARTKIN_ROOT/lib/export.sh"
+# shellcheck source=../lib/drift.sh
+source "$STARTKIN_ROOT/lib/drift.sh"
+# shellcheck source=../lib/target.sh
+source "$STARTKIN_ROOT/lib/target.sh"
+# shellcheck source=../lib/apply.sh
+source "$STARTKIN_ROOT/lib/apply.sh"
 
 usage() {
   cat <<'EOF'
@@ -37,7 +43,9 @@ Commands:
   export [--out FILE] [--from SNAPSHOT]
                   Write the manifest to stdout or FILE (mode 600); --from re-exports a saved snapshot
                   (secrets-gated either way, see docs/engine.md)
-  apply           Reproduce a manifest on this machine
+  apply MANIFEST | --from-peer PEER [--dry-run] [--yes] [--only IDS]
+                  Install a manifest's packages and tools on this machine (--dry-run shows the commands and
+                  runs nothing; see `startkin apply --help`)
   peers [--json] [--no-probe]
                   List Tailscale peers (Linux) and the startkin version each online one runs
   peers fetch PEER
@@ -47,7 +55,7 @@ Options:
   --version       Print the version
   -h, --help      Print this help
 
-Implemented so far: --version, --help, `scan --json`, adopt, track, export, peers.
+Implemented so far: --version, --help, `scan --json`, adopt, track, export, peers, apply (packages and tools).
 EOF
 }
 
@@ -84,7 +92,7 @@ main() {
     track) shift; cmd_track "$@" ;;
     peers) shift; require_cmd jq; cmd_peers "$@" ;;
     export) shift; cmd_export "$@" ;;
-    apply) not_implemented "$1" ;;
+    apply) shift; cmd_apply "$@" ;;
     "") usage >&2; exit 2 ;;
     *) printf 'startkin: unknown command: %s\n\n' "$1" >&2; usage >&2; exit 2 ;;
   esac

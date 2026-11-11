@@ -6,7 +6,7 @@ The engine is bash + jq (decision: no compiled language; revisit only if it outg
 
 | Path | Role |
 |---|---|
-| `bin/startkin` | Dispatcher: `scan`, `export`, `apply`, `peers`, `--version`, `--help`. `--version`, `--help`, `scan --json`, `export`, `adopt`, `track install` and `peers` are real; the rest print `not implemented` and exit 2. |
+| `bin/startkin` | Dispatcher: `scan`, `export`, `apply`, `peers`, `--version`, `--help`. `--version`, `--help`, `scan --json`, `export`, `adopt`, `track install`, `peers` and `apply` (packages and tools) are real; the rest print `not implemented` and exit 2. |
 | `lib/common.sh` | Shared helpers: `log`, `warn`, `die [-c CODE]`, `require_cmd`, `version`, `now_utc`. |
 | `lib/drift.sh` | Omarchy version drift: `drift_compare_versions`, `drift_compare_machines`, `drift_warn`, `drift_check_manifest` (see "Version drift"). |
 | `lib/target.sh` | Target-awareness: `target_check_manifest`, `target_filter_manifest`, `machine_libc` (see "Target awareness"). |
@@ -15,6 +15,7 @@ The engine is bash + jq (decision: no compiled language; revisit only if it outg
 | `lib/registry.sh` | User-confirmed provenance registry and the scan overlay (`docs/adopt.md`). |
 | `lib/export.sh` | `export` subcommand: live manifest or saved snapshot to stdout or a file. |
 | `lib/adopt.sh`, `lib/track.sh`, `lib/ui.sh` | `adopt` and `track install` subcommands; gum/`read` prompts. |
+| `lib/apply.sh` | `apply` subcommand: stage framework, reconcile, packages / registry tools / repo tools (see "Apply"). |
 | `lib/peers.sh` | `peers` subcommand: Tailscale peer list and manifest fetch over SSH. |
 | `lib/scan/<name>.sh` | One scanner per file (see below). |
 | `VERSION` | Engine version. |
@@ -55,6 +56,16 @@ Each manifest records the source's `machine.omarchy_version`; the scan baseline 
 - `form-factor`: laptop-oriented packages/services (`tlp`, `brightnessctl`, ...) warn on non-laptops.
 
 Omarchy version drift is reported once in `drift`, not per item. `target_filter_manifest MANIFEST TARGET_JSON` prints the manifest minus the incompatible items. The rules are name and type heuristics; extend the lists in `lib/target.sh` as false negatives show up.
+
+## Apply
+
+`startkin apply MANIFEST | --from-peer PEER [--dry-run] [--yes] [--only IDS]` (#13; `lib/apply.sh`). The manifest comes from a file (a snapshot) or `peers_fetch`; it must be schema 1.x with unique item ids, else exit 15. Flow: `drift_check_manifest` warns once about Omarchy version drift; `--only` narrows by id; `target_check_manifest` (#15) marks incompatible items, which are skipped and reported with their reason (warn items are flagged and still applied); `apply_reconcile` collapses overlapping items from different scanners (`pacman:rust` vs `mise:rust`, a launcher vs its package): same normalized name, highest provenance confidence wins, tie broken by pacman > aur > mise > uv > pipx > cargo > go > npm, launchers always lose; the loser is reported as `duplicate of ID`. Then the stages run in `APPLY_STAGES` order (design.md "Apply order"), and a summary counts `installed / present / planned / skipped / failed`. Exit 0, 1 if any item failed, 2 usage, 15 bad manifest (peer fetch errors keep their `peers` codes).
+
+Stages. `packages`: one batched `omarchy pkg add P...` and one `omarchy pkg aur add P...` (falls back to `sudo pacman -S --needed` / yay / paru when `omarchy` is absent). With no terminal on stdin the command goes through the visible floating terminal (`omarchy-launch-floating-terminal-with-presentation`, docs/omarchy-plugins.md section 3) so sudo can prompt; afterwards each package is checked with `pacman -Qq`, so an install that did not land is `failed` whatever the exit status said. `registry`: cargo (`--locked`, `--version`), go (`module@version`), npm, uv, pipx, mise, pinned to the manifest `version` when it has one; presence is checked first (`present`), a missing manager is `skipped`. `repos`: `git-build` clones into `$STARTKIN_SRC_DIR` (default `~/.local/src`), checks out the recorded `ref` (an item with no ref is called out as unpinned) and runs the recorded build commands; `release-binary` and `appimage` download raw binaries to `dest` (default `~/.local/bin/<file>`, always inside home), verify `sha256` when recorded (without one the output says the download is unverified) and `install -Dm755`; archives are skipped; `copy` of a file that only exists on the source is fetched with `scp` from the `--from-peer` peer, otherwise skipped; `script` and `unknown` are skipped with a reason.
+
+Safety. Every command is shown (`$ ...`) before it runs. Nothing runs without a `Run this?` confirmation (once per package batch, once per registry/repo item; end of input is no); `--yes` pre-approves all of them, so read a `--dry-run` first. Items that run downloaded code are tagged `[runs downloaded code]`: AUR, git-build, downloads, copies. `--dry-run` runs only read-only presence checks and prints the commands. Manifest values that reach a command line (names, versions, refs, URLs, sha256, paths) are validated first (URLs must be https, git URLs https/ssh/git, destinations inside home); a failing item is `skipped (invalid ... in manifest)`. Items whose category has no stage yet (plugin, config, service, launcher) are reported as skipped.
+
+Extension points for #14. `APPLY_STAGES` is the order: add `plugins`, `config`, `services` there. A stage is a function `apply_stage_NAME ITEMS_JSON` (a JSON array of its items) that reports every item with `apply_record ID STATUS DETAIL`; `apply_stage_of CATEGORY TYPE` routes items to stages (edit its `case`); `apply_stage_title` names it. A stage built on `apply_run_items` only needs per-type planners `apply_plan_<install type>` (dashes become underscores) that set `APPLY_CMDS`, `APPLY_CODE`, `APPLY_NOTE` and return 0 (run), 10 (already present) or 11 (skip, note says why). Helpers: `apply_q`, `apply_f`, `apply_confirm`, `apply_show`, `apply_priv_exec`/`apply_priv_line` (privileged, visible terminal), `apply_path`/`apply_home_path_ok`, `apply_name_ok`/`apply_url_ok`, run state `APPLY_DRY`, `APPLY_YES`, `APPLY_PEER`, `APPLY_DRIFT`. Tests override `STARTKIN_OMARCHY` and `STARTKIN_FLOAT_CMD` so they never reach the real helper or open a terminal.
 
 ## Tests
 
