@@ -11,11 +11,15 @@ pacman_omarchy_version() {
   return 0
 }
 
-# pacman_owns PATH... : true when a package owns any of the paths
+# pacman_owns PATH... : true when a package owns any of the paths. Paths under $HOME are never asked about: no
+# package owns them, and each `pacman -Qo` costs about a quarter of a second.
 pacman_owns() {
   local p
   command -v pacman >/dev/null 2>&1 || return 1
-  for p in "$@"; do pacman -Qo -- "$p" >/dev/null 2>&1 && return 0; done
+  for p in "$@"; do
+    ((${#HOME} > 1)) && [[ $p == "$HOME"/* ]] && continue
+    pacman -Qo -- "$p" >/dev/null 2>&1 && return 0
+  done
   return 1
 }
 

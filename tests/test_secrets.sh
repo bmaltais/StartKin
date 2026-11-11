@@ -170,4 +170,23 @@ test_last_line_without_newline() {
   assert_eq $'secret-assignment\t1' "$T_OUT"
 }
 
+# secrets_scan_file skips lines that cannot match before the per-line analysis; it must report exactly what
+# scanning the whole text would, line numbers included, with clean lines, a last line without newline and NULs around.
+test_scan_file_reports_the_same_findings_as_scanning_the_text() {
+  {
+    printf 'plain line\nkey = value\n\n'
+    printf 'tok: %s\n' "$(fake_ghp)"
+    printf '  "password": "hunter2hunter2"\n'
+    printf 'blob = q8Zx3Lm9Kp2Wv7Rt4Yh1Jb6Qz5Nc\n'
+    printf 'Name = "Mixed%sCase"\n' "$(fake_gho)"
+    printf 'url = https://u:pw1234@host.example/x\n'
+    printf 'nul\0inside = q8Zx3Lm9Kp2Wv7Rt4Yh1Jb6Qz5Nc\n'
+    printf 'last = %s' "$(fake_sk)"
+  } >"$T_TMP/f"
+  secrets_scan_text <"$T_TMP/f" >"$T_TMP/want" || true
+  secrets_scan_file "$T_TMP/f" >"$T_TMP/got" || true
+  assert_eq "$(<"$T_TMP/want")" "$(<"$T_TMP/got")"
+  [[ -s $T_TMP/got ]] || t_fail "fixture produced no findings"
+}
+
 run_tests

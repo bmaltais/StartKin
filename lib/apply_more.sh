@@ -108,7 +108,7 @@ apply_machine_reasons() {
 # CLASS is a consent class --yes does not cover (plugins, units; see apply_confirm_for), added to machine when that applies.
 # Flow: validate, policy checks, fetch from the peer, secrets check, diff, consent, backup, install.
 apply_copy_item() {
-  local item=$1 root=$2 class=${3:-} id src dest rel host stage cat="" machine=0 why=() flagged r found preview=1
+  local item=$1 root=$2 class=${3:-} id src dest rel host hopt stage cat="" machine=0 why=() flagged r found preview=1
   id=$(apply_f "$item" .id)
   src=$(apply_f "$item" .install.path) dest=$(apply_f "$item" '.install.dest // .install.path')
   [[ $src == "$APPLY_TILDE/"* ]] || { apply_copy_end skipped "source path is not under the source home"; return 0; }
@@ -136,6 +136,7 @@ apply_copy_item() {
     return 0
   fi
   host=$(apply_peer_host "$APPLY_PEER") || { apply_copy_end skipped "cannot resolve peer $APPLY_PEER"; return 0; }
+  hopt=$(peers_scp_opts "$host")
 
   printf '  %s%s\n' "$id" "$([[ -e $dest ]] && echo ' [replaces an existing file]')"
   if ((machine)); then printf '    machine-specific (%s): needs its own consent\n' "$(IFS=,; echo "${why[*]}")"; fi
@@ -147,7 +148,7 @@ apply_copy_item() {
 
   apply_tmpdir || { apply_copy_end failed "no temp dir"; return 0; }
   stage=$(mktemp -d "$APPLY_TMP/stage.XXXXXX") || { apply_copy_end failed "no temp dir"; return 0; }
-  if ! "${STARTKIN_SCP:-scp}" -r -p -o BatchMode=yes -- "$host:$rel" "$stage/f" >/dev/null 2>&1 || [[ ! -e $stage/f ]]; then
+  if ! "${STARTKIN_SCP:-scp}" -r -p -o BatchMode=yes ${hopt:+"$hopt"} -- "$host:$rel" "$stage/f" >/dev/null 2>&1 || [[ ! -e $stage/f ]]; then
     apply_copy_end failed "could not fetch $src from $APPLY_PEER"
     return 0
   fi

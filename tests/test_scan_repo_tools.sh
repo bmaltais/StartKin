@@ -47,11 +47,24 @@ test_skips_backups_hidden_and_package_owned() {
   setup
   fake_elf "$BIN/tool.prev"
   fake_elf "$BIN/.hidden-rollback"
-  fake_elf "$BIN/owned"
   fake_elf "$BIN/mine"
+  mkdir -p "$T_TMP/usr/local/bin" # packages own files outside the home directory only
+  fake_elf "$T_TMP/usr/local/bin/owned"
+  export STARTKIN_BIN_DIRS=$BIN:$T_TMP/usr/local/bin
   stub pacman '[[ $1 == -Qo && $3 == */owned ]]'
   out=$(scan_repo_tools)
   assert_eq '["mine"]' "$(jq -c 'map(.name)' <<<"$out")"
+}
+
+# `pacman -Qo` costs a quarter of a second a call and no package owns anything under the home directory.
+test_pacman_is_not_asked_about_files_under_home() {
+  setup
+  fake_elf "$BIN/mine"
+  ln -s "$BIN/mine" "$BIN/alias"
+  stub pacman 'echo "$*" >>"$T_TMP/pacman.calls"; exit 1'
+  out=$(scan_repo_tools)
+  assert_eq '["alias","mine"]' "$(jq -c 'map(.name) | sort' <<<"$out")"
+  [[ ! -e $T_TMP/pacman.calls ]] || t_fail "pacman -Qo was run for a file under HOME: $(<"$T_TMP/pacman.calls")"
 }
 
 test_skips_link_to_package_owned_target() {

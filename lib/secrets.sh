@@ -182,12 +182,19 @@ secrets_check_manifest() {
     | [paths(strings)][] as $p
     | ($root | getpath($p)) as $v
     | [($p | map(seg) | join("") | ltrimstr(".")),
-       (($p | last) as $key | if ($key | type) == "string" then "\($key | @json): \($v | @json)" else ($v | @json) end)]
+       (($p | last) as $key | if ($key | type) == "string" then "\($key | @json): \($v | @json)" else ($v | @json) end),
+       (($p | last) | if type == "string" then . else "" end)]
     | @tsv' <<<"$doc" 2>/dev/null) || return 2
-  while IFS=$'\t' read -r loc text; do
+  while IFS=$'\t' read -r loc text key; do
     [[ -n $loc ]] || continue
     _secrets_line_kinds "$text"
-    for k in "${_SECRETS_FOUND[@]}"; do printf '%s\t%s\n' "$k" "$loc"; found=1; done
+    for k in "${_SECRETS_FOUND[@]}"; do
+      # id, name, path, dest and source name a thing (often a long hashed file name); they hold no content to leak.
+      # Every other pattern still applies to them; only the entropy guess is skipped.
+      [[ $k == high-entropy && $key =~ ^(id|name|path|dest|source)$ ]] && continue
+      printf '%s\t%s\n' "$k" "$loc"
+      found=1
+    done
   done <<<"$rows"
   while IFS=$'\t' read -r loc p; do
     [[ -n $p ]] || continue
@@ -196,9 +203,20 @@ secrets_check_manifest() {
   return "$found"
 }
 
-# secrets_scan_file FILE : secrets_scan_text over FILE. Returns 2 if FILE is not a readable file.
+# Superset of every rule above (case-insensitive): a line that matches none of these cannot produce a finding. It
+# lets secrets_scan_file hand only a few candidate lines to the slow per-line analysis. Keep it in step with the rules.
+_SECRETS_PREFILTER_RE='PRIVATE KEY|gh[pousr]_|github_pat_|sk-|AIza|AKIA|ASIA|xox[abeoprs]-|eyJ|://|password|passwd|passphrase|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|[:=][[:space:]]*["'"'"']?[A-Za-z0-9+/_=-]{20}'
+
+# secrets_scan_file FILE : same output as secrets_scan_text over FILE, but only lines that pass the prefilter are
+# analysed (line numbers are kept). Returns 2 if FILE is not a readable file.
 secrets_scan_file() {
   (($# == 1)) || { printf 'secrets_scan_file: usage: secrets_scan_file FILE\n' >&2; return 2; }
   [[ -f $1 && -r $1 ]] || { printf 'secrets_scan_file: cannot read: %s\n' "$1" >&2; return 2; }
-  secrets_scan_text <"$1"
+  local cand n line k found=0
+  while IFS= read -r cand || [[ -n $cand ]]; do
+    n=${cand%%:*} line=${cand#*:}
+    _secrets_line_kinds "$line"
+    for k in "${_SECRETS_FOUND[@]}"; do printf '%s\t%d\n' "$k" "$n"; found=1; done
+  done < <(tr -d '\0' <"$1" | grep -naiE -e "$_SECRETS_PREFILTER_RE")
+  return "$found"
 }
