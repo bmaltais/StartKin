@@ -309,6 +309,52 @@ test_rollback_restores_replaced_files_and_removes_created_ones() {
 
 run_apply_rollback() { "$BIN" rollback "$@" <"$T_TMP/in"; }
 
+test_rollback_removes_directories_apply_created_but_nothing_else() {
+  setup; peer_setup; answer y
+  mkdir -p "$HOME/.config/existing"
+  remote vectorcraft/deep/ui.json "{}"
+  mf "$(cfg vectorcraft/deep/ui.json)"
+  assert_status 0 run_apply --from-peer box
+  [[ -f $HOME/.config/vectorcraft/deep/ui.json ]] || t_fail "setup: file not installed"
+  assert_status 0 run_apply_rollback latest --yes
+  [[ ! -e $HOME/.config/vectorcraft ]] || t_fail "created directories survived rollback"
+  [[ -d $HOME/.config/existing && -d $HOME/.config ]] || t_fail "rollback removed a directory apply did not create"
+}
+
+test_rollback_keeps_created_directory_when_the_user_added_files() {
+  setup; peer_setup; answer y
+  remote vectorcraft/ui.json "{}"
+  mf "$(cfg vectorcraft/ui.json)"
+  assert_status 0 run_apply --from-peer box
+  echo mine >"$HOME/.config/vectorcraft/user.txt"
+  assert_status 0 run_apply_rollback latest --yes
+  [[ ! -e $HOME/.config/vectorcraft/ui.json ]] || t_fail "created file survived rollback"
+  assert_eq "mine" "$(content vectorcraft/user.txt)"
+}
+
+test_rollback_removes_the_directories_created_for_a_unit_file() {
+  setup; peer_setup
+  mkdir -p "$REMOTE/.config/systemd/user"
+  echo "[Service]" >"$REMOTE/.config/systemd/user/mine.service"
+  mf "$(svc user mine.service '{"type":"copy","path":"~/.config/systemd/user/mine.service"}')"
+  answer $'y\ny'
+  assert_status 0 run_apply --from-peer box
+  [[ -f $HOME/.config/systemd/user/mine.service ]] || t_fail "setup: unit not installed"
+  assert_status 0 run_apply_rollback latest --yes
+  [[ ! -e $HOME/.config/systemd ]] || t_fail "unit directories survived rollback"
+}
+
+test_rollback_of_a_journal_without_dir_records_still_works() {
+  setup; peer_setup; answer y
+  remote foo/new.conf "n=1"
+  mf "$(cfg foo/new.conf)"
+  assert_status 0 run_apply --from-peer box
+  rm -f "$STARTKIN_STATE_DIR"/backups/*/dirs
+  assert_status 0 run_apply_rollback latest --yes
+  [[ ! -e $HOME/.config/foo/new.conf ]] || t_fail "created file survived rollback"
+  [[ -d $HOME/.config/foo ]] || t_fail "an unrecorded directory must be left alone"
+}
+
 test_rollback_by_id_list_and_errors() {
   setup; peer_setup; answer y
   remote foo/a.conf "color=red"
