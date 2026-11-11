@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# check: shellcheck, bash -n and the tests. The pre-commit hook runs this (scripts/install-hooks).
+set -uo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")" || exit 1
+
+fail=0
+step() { # NAME COMMAND...
+  local name=$1 out
+  shift
+  if out=$("$@" 2>&1); then
+    printf '  ok    %s\n' "$name"
+  else
+    printf '  FAIL  %s\n' "$name"
+    printf '        %s\n' "${out//$'\n'/$'\n        '}"
+    fail=1
+  fi
+}
+
+# Our own shell files: tracked or untracked-not-ignored, never the devkit submodule.
+mapfile -t files < <(
+  {
+    git ls-files --cached --others --exclude-standard
+  } | grep -v '^scripts/devkit' | sort -u | while read -r f; do
+    [[ -f $f ]] || continue
+    if [[ $f == *.sh ]] || head -n1 "$f" | grep -qE '^#!.*(bash|/sh)( |$)'; then echo "$f"; fi
+  done
+)
+
+# shellcheck disable=SC2329 # invoked through step
+syntax() { local f; for f in "${files[@]}"; do bash -n "$f" || return 1; done; }
+step "bash -n (${#files[@]} files)" syntax
+if command -v shellcheck >/dev/null; then
+  step "shellcheck" shellcheck -x "${files[@]}"
+else
+  echo "  skip  shellcheck (not installed)"
+fi
+step "tests" tests/run.sh
+
+# Schema validator over schema/examples (scripts/validate-manifest picks its backend the same way).
+if command -v check-jsonschema >/dev/null 2>&1 || command -v uvx >/dev/null 2>&1 ||
+  python3 -c 'import jsonschema' >/dev/null 2>&1; then
+  step "schema examples" schema/test.sh
+else
+  echo "  skip  schema examples (no validator backend: install check-jsonschema, uv, or python3 jsonschema)"
+fi
+
+exit "$fail"

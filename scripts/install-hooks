@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Install the pre-commit hook: writes .githooks/pre-commit (runs ./check) and points core.hooksPath at it.
+# Run once per clone.
+set -euo pipefail
+
+root=$(git rev-parse --show-toplevel)
+mkdir -p "$root/.githooks"
+cat >"$root/.githooks/pre-commit" <<'HOOK'
+#!/usr/bin/env bash
+# Runs ./check; prints the whole run only when it fails.
+root=$(git rev-parse --show-toplevel) || exit 1
+if ! output=$(cd "$root" && ./check 2>&1); then
+  echo "$output"
+  echo "pre-commit: ./check failed"
+  exit 1
+fi
+HOOK
+chmod +x "$root/.githooks/pre-commit"
+git -C "$root" config core.hooksPath .githooks
+echo "pre-commit: installed (.githooks/pre-commit runs ./check)"
