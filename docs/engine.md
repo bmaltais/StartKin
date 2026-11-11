@@ -8,6 +8,7 @@ The engine is bash + jq (decision: no compiled language; revisit only if it outg
 |---|---|
 | `bin/startkin` | Dispatcher: `scan`, `export`, `apply`, `peers`, `--version`, `--help`. `--version`, `--help`, `scan --json`, `adopt` and `track install` are real; the rest print `not implemented` and exit 2. |
 | `lib/common.sh` | Shared helpers: `log`, `warn`, `die [-c CODE]`, `require_cmd`, `version`, `now_utc`. |
+| `lib/drift.sh` | Omarchy version drift: `drift_compare_versions`, `drift_compare_machines`, `drift_warn`, `drift_check_manifest` (see "Version drift"). |
 | `lib/machine.sh` | Machine info for the manifest header (hostname, Omarchy version from pacman, arch, GPU vendors from `lspci`, form factor). |
 | `lib/scan.sh` | Scanner discovery and manifest assembly. |
 | `lib/registry.sh` | User-confirmed provenance registry and the scan overlay (`docs/adopt.md`). |
@@ -32,6 +33,10 @@ The dispatcher auto-discovers every `lib/scan/*.sh` (sorted by file name). To ad
 `startkin scan --report` prints how well the untracked binaries and app dirs (`repo-tool` items) were traced: `items N: exact E, heuristic H, unknown U` (exact = confidence 0.9 or more, heuristic = between 0 and 0.9, unknown = method `none`) and one `  METHOD: COUNT` line per provenance method (`prov_report` in `lib/provenance.sh`; the registry overlay is applied first, so adopted items count as exact). It exits 3 when a scanner failed, like `--json`.
 
 `startkin scan --json` prints `{schema_version: "1.0", generated_at, machine{hostname, omarchy_version, arch, gpu[], form_factor}, items[]}`, validated by `schema/manifest.schema.json` (`scripts/validate-manifest`). `omarchy_version` is the pacman version of `omarchy` (or `omarchy-dev`), `"unknown"` if neither is installed. `gpu` has one vendor string per GPU (`intel`, `amd`, `nvidia`, `other`). `form_factor` is `vm` when `systemd-detect-virt --vm` says so, otherwise from the DMI chassis type: `desktop`, `laptop`, `server`, `other`. If the schema changes, the schema wins and `lib/scan.sh`/`lib/machine.sh` follow.
+
+## Version drift
+
+Each manifest records the source's `machine.omarchy_version`; the scan baseline is always the scanning machine's own Omarchy, so a manifest only lists what was added on top of that version. When a manifest is applied on a machine with a different version, `lib/drift.sh` compares the two (`sort -V`: `same`, `source-older`, `source-newer`, `unknown`) and `drift_warn` warns once up front, never failing. Decision on items that became Omarchy defaults in a newer target version: they are not dropped or errored. Apply's normal "already present on the target" check treats them as satisfied and skips them, and when the versions differ the report says so ("now in Omarchy defaults or already installed"). Items from a newer source than the target warn that they may need things the target lacks. An `unknown` version on either side warns that defaults cannot be compared. Target-awareness (#15) reuses `drift_compare_machines`.
 
 ## Tests
 
