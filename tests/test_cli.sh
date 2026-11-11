@@ -67,6 +67,17 @@ test_scan_missing_function() {
 }
 
 
+test_scan_overlays_registry() {
+  mkdir "$T_TMP/s"
+  echo "scan_t() { echo '[{\"id\":\"repo-tool:foo\",\"install\":{\"type\":\"unknown\",\"path\":\"/x\"},\"provenance\":{\"method\":\"none\",\"confidence\":0,\"evidence\":[]}},{\"id\":\"repo-tool:bar\",\"provenance\":{\"method\":\"none\",\"confidence\":0,\"evidence\":[]}}]'; }" >"$T_TMP/s/t.sh"
+  export STARTKIN_REGISTRY_FILE=$T_TMP/reg.json
+  STARTKIN_SCAN_DIR=$T_TMP/s assert_status 0 "$BIN" adopt repo-tool:foo --git https://github.com/o/r
+  STARTKIN_SCAN_DIR=$T_TMP/s assert_status 0 "$BIN" scan --json
+  assert_json_eq '.items[0].provenance | [.method, .confidence]' '["user",1]' "$T_OUT"
+  assert_json_eq '.items[0].install.url' '"https://github.com/o/r"' "$T_OUT"
+  assert_json_eq '.items[1].provenance.method' '"none"' "$T_OUT"
+}
+
 test_scan_json_validates_against_schema() {
   mkdir "$T_TMP/empty"
   STARTKIN_SCAN_DIR=$T_TMP/empty "$BIN" scan --json >"$T_TMP/m.json"
