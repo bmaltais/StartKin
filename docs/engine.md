@@ -6,12 +6,13 @@ The engine is bash + jq (decision: no compiled language; revisit only if it outg
 
 | Path | Role |
 |---|---|
-| `bin/startkin` | Dispatcher: `scan`, `export`, `apply`, `peers`, `--version`, `--help`. `--version`, `--help`, `scan --json`, `adopt`, `track install` and `peers` are real; the rest print `not implemented` and exit 2. |
+| `bin/startkin` | Dispatcher: `scan`, `export`, `apply`, `peers`, `--version`, `--help`. `--version`, `--help`, `scan --json`, `export`, `adopt`, `track install` and `peers` are real; the rest print `not implemented` and exit 2. |
 | `lib/common.sh` | Shared helpers: `log`, `warn`, `die [-c CODE]`, `require_cmd`, `version`, `now_utc`. |
 | `lib/drift.sh` | Omarchy version drift: `drift_compare_versions`, `drift_compare_machines`, `drift_warn`, `drift_check_manifest` (see "Version drift"). |
 | `lib/machine.sh` | Machine info for the manifest header (hostname, Omarchy version from pacman, arch, GPU vendors from `lspci`, form factor). |
 | `lib/scan.sh` | Scanner discovery and manifest assembly. |
 | `lib/registry.sh` | User-confirmed provenance registry and the scan overlay (`docs/adopt.md`). |
+| `lib/export.sh` | `export` subcommand: live manifest or saved snapshot to stdout or a file. |
 | `lib/adopt.sh`, `lib/track.sh`, `lib/ui.sh` | `adopt` and `track install` subcommands; gum/`read` prompts. |
 | `lib/peers.sh` | `peers` subcommand: Tailscale peer list and manifest fetch over SSH. |
 | `lib/scan/<name>.sh` | One scanner per file (see below). |
@@ -34,6 +35,10 @@ The dispatcher auto-discovers every `lib/scan/*.sh` (sorted by file name). To ad
 `startkin scan --report` prints how well the untracked binaries and app dirs (`repo-tool` items) were traced: `items N: exact E, heuristic H, unknown U` (exact = confidence 0.9 or more, heuristic = between 0 and 0.9, unknown = method `none`) and one `  METHOD: COUNT` line per provenance method (`prov_report` in `lib/provenance.sh`; the registry overlay is applied first, so adopted items count as exact). It exits 3 when a scanner failed, like `--json`.
 
 `startkin scan --json` prints `{schema_version: "1.0", generated_at, machine{hostname, omarchy_version, arch, gpu[], form_factor}, items[]}`, validated by `schema/manifest.schema.json` (`scripts/validate-manifest`). `omarchy_version` is the pacman version of `omarchy` (or `omarchy-dev`), `"unknown"` if neither is installed. `gpu` has one vendor string per GPU (`intel`, `amd`, `nvidia`, `other`). `form_factor` is `vm` when `systemd-detect-virt --vm` says so, otherwise from the DMI chassis type: `desktop`, `laptop`, `server`, `other`. If the schema changes, the schema wins and `lib/scan.sh`/`lib/machine.sh` follow.
+
+## Export and snapshots
+
+`startkin export [--out FILE] [--from SNAPSHOT]` (docs/design.md, Saved snapshots). Without options it prints the live manifest, exactly like `scan --json`. `--out FILE` writes it to FILE instead (mode 600, via a temp file in the same directory and a rename, so a failed export never truncates an existing snapshot). `--from SNAPSHOT` uses a saved manifest instead of scanning: it must be a JSON object with `schema_version` and an `items` array (else exit 1). Exit codes: 0 ok, 1 error, 2 usage, 3 a scanner failed (manifest still written), 4 withheld by the secrets gate. The gate (`docs/secrets-policy.md`, rule 4) runs on every path: live output through `scan_manifest`, snapshots through `export_gate_snapshot`. On a finding nothing is printed or written; kind and JSON location go to stderr.
 
 ## Version drift
 
