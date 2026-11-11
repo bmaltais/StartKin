@@ -123,6 +123,7 @@ peer_setup() {
   mkdir -p "$REMOTE"
   stub tailscale 'echo "{\"Peer\":{\"a\":{\"HostName\":\"box\",\"DNSName\":\"box.ts.net.\",\"OS\":\"linux\",\"Online\":true,\"TailscaleIPs\":[\"100.1.1.1\"]}}}"'
   stub ssh 'if [[ $* == *--version* ]]; then echo "startkin '"$(<"$ROOT/VERSION")"'"; else cat "$T_TMP/m.json"; fi'
+  stub getent 'exit 2' # short names do not resolve: the peer is reached by its tailnet name
   stub scp 'echo "scp $*" >>"$CALLS"
 src=${*: -2:1}; dst=${*: -1}
 [[ $src == box.ts.net:* ]] || exit 1
@@ -157,6 +158,14 @@ test_new_config_file_is_fetched_from_the_peer_and_created() {
   assert_contains "$T_OUT" "installed config:foo/a.conf"
   assert_eq "color=red" "$(content foo/a.conf)"
   assert_contains "$T_OUT" "startkin rollback"
+}
+
+test_scp_to_the_tailnet_name_accepts_a_new_host_key() {
+  setup; peer_setup; answer y
+  remote foo/a.conf "color=red"
+  mf "$(cfg foo/a.conf)"
+  assert_status 0 run_apply --from-peer box
+  assert_contains "$(only_calls '^scp')" "-oStrictHostKeyChecking=accept-new"
 }
 
 test_changed_config_shows_a_diff_backs_up_and_replaces() {

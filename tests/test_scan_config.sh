@@ -206,6 +206,21 @@ test_walk_leaves_glob_options_as_it_found_them() {
   shopt -q dotglob || t_fail "dotglob was switched off by config_walk"
 }
 
+test_app_state_caches_logs_and_storage_blobs_are_skipped() {
+  setup
+  put "$H/Code/CachedProfilesData/x/y.json" '{}'
+  put "$H/Code/WebStorage/5/file.bin" 'x'
+  put "$H/Code/User/globalStorage/state.vscdb" 'x'
+  put "$H/Code/User/settings.json" '{"a":1}'
+  put "$H/sunshine/sunshine.log.1" 'x'
+  put "$H/Grok Bot/sand-client-persistence/MFRGGZDFMZTWQ2LKNNWG23TPOBYXE43UOV3HO6DZPJ2Q7K4.blob" 'x'
+  put "$H/Grok Bot/sand-state/data" 'x'
+  put "$H/app/data.sqlite" 'x'
+  put "$H/app/data.db-wal" 'x'
+  put "$H/app/settings.toml" 'a = 1'
+  assert_eq '["config:Code/User/settings.json","config:app/settings.toml","config:hypr/extra.lua","config:hypr/looknfeel.lua"]' "$(ids)"
+}
+
 test_missing_config_dir_is_empty() {
   setup
   rm -rf "$H"

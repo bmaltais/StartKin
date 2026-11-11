@@ -307,7 +307,7 @@ apply_plan_appimage() { apply_plan_download appimage "$1"; }
 
 # copy: a binary or file that exists only on the source machine. Fetched over scp from the peer given with --from-peer.
 apply_plan_copy() {
-  local src dest host rel
+  local src dest host rel hopt
   src=$(apply_f "$1" .install.path) dest=$(apply_f "$1" '.install.dest // .install.path')
   [[ $src == "$APPLY_TILDE/"* ]] || { APPLY_NOTE="source path is not under the source home"; return 11; }
   apply_relpath_ok "${src#"$APPLY_TILDE/"}" || { apply_bad path; return; }
@@ -316,10 +316,11 @@ apply_plan_copy() {
   if [[ -e $dest ]]; then APPLY_NOTE="$dest exists"; return 10; fi
   if [[ -z $APPLY_PEER ]]; then APPLY_NOTE="the file only exists on the source machine; apply with --from-peer to copy it"; return 11; fi
   host=$(apply_peer_host "$APPLY_PEER") || { APPLY_NOTE="cannot resolve peer $APPLY_PEER"; return 11; }
+  hopt=$(peers_scp_opts "$host")
   rel=${src#"$APPLY_TILDE/"}
   APPLY_CODE=1
   APPLY_CMDS=("$(apply_q mkdir -p -- "$(dirname -- "$dest")")"
-    "$(apply_q "${STARTKIN_SCP:-scp}" -p -o BatchMode=yes -- "$host:$rel" "$dest")")
+    "$(apply_q "${STARTKIN_SCP:-scp}" -p -o BatchMode=yes ${hopt:+"$hopt"} -- "$host:$rel" "$dest")")
 }
 
 apply_plan_script() { APPLY_NOTE="script installs are not applied automatically; run it yourself after reviewing it"; return 11; }
@@ -328,8 +329,10 @@ apply_plan_unknown() { APPLY_NOTE="no install method recorded; run 'startkin ado
 # apply_peer_host PEER : the host peers_fetch would connect to
 apply_peer_host() {
   local row
-  row=$(peers_table | jq -r --arg n "$1" 'map(select((.name | ascii_downcase) == ($n | ascii_downcase))) | first | .host // empty') || return 1
-  [[ -n $row ]] && printf '%s' "$row"
+  row=$(peers_table | jq -r --arg n "$1" 'map(select((.name | ascii_downcase) == ($n | ascii_downcase))) | first | if . == null then empty else (.short // "") + "\t" + .host end') || return 1
+  [[ -n $row ]] || return 1
+  peers_target "${row#*$'\t'}" "${row%%$'\t'*}"
+  printf '%s' "$PEERS_HOST"
 }
 
 # apply_plan ITEM_JSON : dispatch on the install type; unknown types are skipped

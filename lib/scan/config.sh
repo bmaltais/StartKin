@@ -37,15 +37,16 @@ config_category() {
   esac
 }
 
-# config_noise REL : true for backups, caches and paths another scanner owns
+# config_noise REL : true for backups, caches, logs, storage and database blobs, app state (persistence dirs) and paths another scanner owns
 config_noise() {
   local rel=$1 part IFS=/
   case $rel in omarchy/plugins | omarchy/plugins/*) return 0 ;; esac
   for part in $rel; do # any path component
     case $part in
       *.bak | *.bak.* | *.bak-* | *.orig | *.rej | *~ | *.swp | .\#* | .git | node_modules | __pycache__) return 0 ;;
-      *Cache | *Cache_Data | Dictionaries | cache | logs | Logs | "Local Storage" | "Session Storage" | IndexedDB | blob_storage | Crashpad | sentry | "Service Worker" | Partitions | leveldb) return 0 ;;
-      *.log | *.log.old | LOG | LOG.old | TransportSecurity | Cookies | Cookies-journal | "Network Persistent State") return 0 ;;
+      Cached* | cached_* | *Storage | "Shared Dictionary" | sand-* | *-persistence | "Crash Reports" | *Cache | *Cache_Data | Dictionaries | cache | logs | Logs | IndexedDB | blob_storage | Crashpad | sentry | "Service Worker" | Partitions | leveldb) return 0 ;;
+      *.log | *.log.* | *.log-* | LOG | LOG.old | TransportSecurity | Cookies | Cookies-journal | "Network Persistent State") return 0 ;;
+      *.blob | *.vscdb | *.vscdb.* | *.sqlite | *.sqlite3 | *.sqlite-* | *.db | *.db-* | *-wal | *-shm | *-journal) return 0 ;;
     esac
   done
   return 1

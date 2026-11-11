@@ -16,6 +16,7 @@ STATUS='{"Self":{"HostName":"me","DNSName":"me.tail.ts.net.","Online":true,"OS":
 fake_tailscale() {
   printf '%s' "$STATUS" >"$T_TMP/status.json"
   stub tailscale "[[ \$1 == status && \$2 == --json ]] || exit 64; cat '$T_TMP/status.json'"
+  stub getent 'exit 2' # short host names do not resolve unless a test says so
 }
 
 # fake_ssh : answers by target (second to last arg) and remote command (last arg).
@@ -140,6 +141,86 @@ test_fetch_invalid_manifest() {
   fake_tailscale; BOX_MANIFEST='not json' fake_ssh
   assert_status 15 "$BIN" peers fetch box
   assert_contains "$T_ERR" "not a valid manifest"
+}
+
+# ok_ssh : a box that answers --version and scan; logs every full argument list to ssh.args
+ok_ssh() {
+  local v
+  v=$(<"$ROOT/VERSION")
+  stub ssh "
+echo \"\$*\" >>'$T_TMP/ssh.args'
+case \${@: -1} in
+  *--version*) echo 'startkin ${v//[$'\n ']/}' ;;
+  *) echo '{\"schema_version\":\"1.0\",\"items\":[]}' ;;
+esac"
+}
+
+test_fetch_prefers_the_short_host_name_when_it_resolves() {
+  fake_tailscale; ok_ssh
+  stub getent 'echo "100.1.1.1 box"'
+  assert_status 0 "$BIN" peers fetch box
+  assert_contains "$(<"$T_TMP/ssh.args")" "-- box "
+  [[ $(<"$T_TMP/ssh.args") != *tail.ts.net* ]] || t_fail "FQDN used although the short name resolves"
+  [[ $(<"$T_TMP/ssh.args") != *accept-new* ]] || t_fail "accept-new must only go with the FQDN"
+}
+
+test_fetch_falls_back_to_fqdn_with_accept_new() {
+  fake_tailscale; ok_ssh
+  assert_status 0 "$BIN" peers fetch box
+  assert_contains "$(<"$T_TMP/ssh.args")" "-o StrictHostKeyChecking=accept-new"
+  assert_contains "$(<"$T_TMP/ssh.args")" "-- box.tail.ts.net "
+}
+
+test_fetch_uses_fqdn_when_the_short_name_is_ambiguous() {
+  STATUS='{"Peer":{"a":{"HostName":"box","DNSName":"box.tail.ts.net.","Online":true,"OS":"linux"},
+    "b":{"HostName":"Box","DNSName":"box-1.tail.ts.net.","Online":true,"OS":"linux"}}}'
+  fake_tailscale; ok_ssh
+  stub getent 'echo "100.1.1.1 box"'
+  assert_status 0 "$BIN" peers fetch box
+  assert_contains "$(<"$T_TMP/ssh.args")" "tail.ts.net "
+  [[ $(<"$T_TMP/ssh.args") != *"-- box "* ]] || t_fail "ambiguous short name used"
+}
+
+test_host_key_failure_says_so() {
+  fake_tailscale
+  stub ssh 'echo "Host key verification failed." >&2; exit 255'
+  assert_status 13 "$BIN" peers fetch box
+  assert_contains "$T_ERR" "host key"
+  [[ $T_ERR != *"Tailscale SSH"* ]] || t_fail "host key failure blamed on Tailscale SSH policy"
+}
+
+test_remote_stderr_is_capped_with_the_full_text_kept() {
+  fake_tailscale
+  export STARTKIN_STATE_DIR=$T_TMP/state
+  stub ssh "if [[ \${@: -1} == *--version* ]]; then echo 'startkin $(<"$ROOT/VERSION")'; else for i in \$(seq 1 100); do echo \"noise line \$i\" >&2; done; exit 1; fi"
+  assert_status 14 "$BIN" peers fetch box
+  assert_contains "$T_ERR" "noise line 100"
+  [[ $T_ERR != *"noise line 50"* ]] || t_fail "stderr not capped"
+  assert_contains "$T_ERR" "85 more lines"
+  assert_contains "$(<"$T_TMP/state/peers-box.err")" "noise line 1"
+  assert_status 14 "$BIN" peers fetch box --verbose
+  assert_contains "$T_ERR" "noise line 50"
+}
+
+test_startkin_found_under_local_bin_when_not_on_path() {
+  fake_tailscale
+  local v
+  v=$(<"$ROOT/VERSION")
+  stub ssh "
+echo \"\$*\" >>'$T_TMP/ssh.args'
+case \${@: -1} in
+  'startkin '*) echo 'bash: startkin: command not found' >&2; exit 127 ;;
+  *--version*) echo 'startkin ${v//[$'\n ']/}' ;;
+  *) echo '{\"schema_version\":\"1.0\",\"items\":[]}' ;;
+esac"
+  assert_status 0 "$BIN" peers fetch box
+  assert_contains "$(<"$T_TMP/ssh.args")" "\$HOME/.local/bin/startkin scan --json"
+}
+
+test_startkin_missing_everywhere_mentions_remote_cmd() {
+  fake_tailscale; fake_ssh
+  assert_status 14 "$BIN" peers fetch bare
+  assert_contains "$T_ERR" "STARTKIN_REMOTE_CMD"
 }
 
 test_fetch_requires_host() {
