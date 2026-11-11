@@ -1,0 +1,589 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/bmaltais/StartKin/schema/manifest.schema.json",
+  "title": "StartKin manifest",
+  "description": "Machine info plus the items added after the Omarchy baseline. See docs/manifest.md.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1\\.[0-9]+$",
+      "description": "Major.minor. This schema accepts major 1; minor bumps are additive."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "machine": {
+      "$ref": "#/$defs/machine"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/item"
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "machine",
+    "items"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "machine": {
+      "type": "object",
+      "properties": {
+        "hostname": {
+          "type": "string",
+          "minLength": 1
+        },
+        "omarchy_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "arch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "gpu": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "One entry per GPU; empty if none detected."
+        },
+        "form_factor": {
+          "enum": [
+            "desktop",
+            "laptop",
+            "server",
+            "vm",
+            "other"
+          ]
+        }
+      },
+      "required": [
+        "hostname",
+        "omarchy_version",
+        "arch",
+        "gpu",
+        "form_factor"
+      ],
+      "additionalProperties": false
+    },
+    "item": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^\\S+$",
+          "description": "Stable id, unique within the manifest, e.g. pacman:ripgrep."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "cli",
+            "gui-app",
+            "library",
+            "runtime",
+            "plugin",
+            "script",
+            "config",
+            "service",
+            "launcher",
+            "other"
+          ]
+        },
+        "category": {
+          "enum": [
+            "package",
+            "registry-tool",
+            "plugin",
+            "repo-tool",
+            "config",
+            "service",
+            "launcher"
+          ]
+        },
+        "risk": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "install": {
+          "$ref": "#/$defs/install"
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "null when not determinable."
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "private": {
+          "type": "boolean",
+          "description": "true = must not leave the machine unless the user opts in."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "category",
+        "risk",
+        "install",
+        "version",
+        "provenance",
+        "private"
+      ],
+      "additionalProperties": false
+    },
+    "install": {
+      "description": "Discriminated on `type`.",
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "oneOf": [
+        {
+          "$ref": "#/$defs/install_pacman"
+        },
+        {
+          "$ref": "#/$defs/install_aur"
+        },
+        {
+          "$ref": "#/$defs/install_cargo"
+        },
+        {
+          "$ref": "#/$defs/install_go"
+        },
+        {
+          "$ref": "#/$defs/install_npm"
+        },
+        {
+          "$ref": "#/$defs/install_uv"
+        },
+        {
+          "$ref": "#/$defs/install_pipx"
+        },
+        {
+          "$ref": "#/$defs/install_mise"
+        },
+        {
+          "$ref": "#/$defs/install_plugin"
+        },
+        {
+          "$ref": "#/$defs/install_git_build"
+        },
+        {
+          "$ref": "#/$defs/install_release_binary"
+        },
+        {
+          "$ref": "#/$defs/install_appimage"
+        },
+        {
+          "$ref": "#/$defs/install_script"
+        },
+        {
+          "$ref": "#/$defs/install_copy"
+        },
+        {
+          "$ref": "#/$defs/install_unknown"
+        }
+      ]
+    },
+    "provenance": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "enum": [
+            "package-manager",
+            "registry",
+            "build-metadata",
+            "version-flag",
+            "adjacent-evidence",
+            "shell-history",
+            "name-search",
+            "user",
+            "fallback",
+            "none"
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Short human-readable evidence. Never secrets or file contents."
+        }
+      },
+      "required": [
+        "method",
+        "confidence",
+        "evidence"
+      ],
+      "additionalProperties": false
+    },
+    "install_pacman": {
+      "title": "pacman",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "pacman"
+        },
+        "package": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repo": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "package"
+      ],
+      "additionalProperties": false
+    },
+    "install_aur": {
+      "title": "aur",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "aur"
+        },
+        "package": {
+          "type": "string",
+          "minLength": 1
+        },
+        "helper": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "package"
+      ],
+      "additionalProperties": false
+    },
+    "install_cargo": {
+      "title": "cargo",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "cargo"
+        },
+        "crate": {
+          "type": "string",
+          "minLength": 1
+        },
+        "locked": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type",
+        "crate"
+      ],
+      "additionalProperties": false
+    },
+    "install_go": {
+      "title": "go",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "go"
+        },
+        "module": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "module"
+      ],
+      "additionalProperties": false
+    },
+    "install_npm": {
+      "title": "npm",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "npm"
+        },
+        "package": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "package"
+      ],
+      "additionalProperties": false
+    },
+    "install_uv": {
+      "title": "uv",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "uv"
+        },
+        "package": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "package"
+      ],
+      "additionalProperties": false
+    },
+    "install_pipx": {
+      "title": "pipx",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "pipx"
+        },
+        "package": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "package"
+      ],
+      "additionalProperties": false
+    },
+    "install_mise": {
+      "title": "mise",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "mise"
+        },
+        "tool": {
+          "type": "string",
+          "minLength": 1
+        },
+        "backend": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "tool"
+      ],
+      "additionalProperties": false
+    },
+    "install_plugin": {
+      "title": "plugin",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "plugin"
+        },
+        "plugin_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "description": "URL or git remote"
+        }
+      },
+      "required": [
+        "type",
+        "plugin_id"
+      ],
+      "additionalProperties": false
+    },
+    "install_git_build": {
+      "title": "git-build",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "git-build"
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "description": "URL or git remote"
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "build": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "type",
+        "url"
+      ],
+      "additionalProperties": false
+    },
+    "install_release_binary": {
+      "title": "release-binary",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "release-binary"
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "description": "URL or git remote"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "dest": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "url"
+      ],
+      "additionalProperties": false
+    },
+    "install_appimage": {
+      "title": "appimage",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "appimage"
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "description": "URL or git remote"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "dest": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "url"
+      ],
+      "additionalProperties": false
+    },
+    "install_script": {
+      "title": "script",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "script"
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "description": "URL or git remote"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "interpreter": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "url"
+          ]
+        },
+        {
+          "required": [
+            "path"
+          ]
+        }
+      ]
+    },
+    "install_copy": {
+      "title": "copy",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "copy"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dest": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "path"
+      ],
+      "additionalProperties": false
+    },
+    "install_unknown": {
+      "title": "unknown",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "unknown"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hint": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

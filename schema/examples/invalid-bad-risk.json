@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "machine": { "hostname": "h", "omarchy_version": "3.0.0", "arch": "x86_64", "gpu": [], "form_factor": "laptop" },
+  "items": [
+    {
+      "id": "pacman:foo", "name": "foo", "kind": "cli", "category": "package", "risk": "extreme",
+      "install": { "type": "pacman", "package": "foo" },
+      "version": "1", "private": false,
+      "provenance": { "method": "package-manager", "confidence": 1, "evidence": [] }
+    }
+  ]
+}

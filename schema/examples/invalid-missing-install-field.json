@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "machine": { "hostname": "h", "omarchy_version": "3.0.0", "arch": "x86_64", "gpu": [], "form_factor": "laptop" },
+  "items": [
+    {
+      "id": "git:tool", "name": "tool", "kind": "cli", "category": "repo-tool", "risk": "medium",
+      "install": { "type": "git-build", "ref": "main" },
+      "version": null, "private": false,
+      "provenance": { "method": "adjacent-evidence", "confidence": 0.5, "evidence": [] }
+    }
+  ]
+}

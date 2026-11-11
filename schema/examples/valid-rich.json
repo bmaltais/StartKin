@@ -1,0 +1,142 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-01-15T10:30:00Z",
+  "machine": {
+    "hostname": "example-laptop",
+    "omarchy_version": "3.1.0",
+    "arch": "x86_64",
+    "gpu": ["NVIDIA Example GPU", "Intel Example Graphics"],
+    "form_factor": "laptop"
+  },
+  "items": [
+    {
+      "id": "pacman:ripgrep", "name": "ripgrep", "kind": "cli", "category": "package", "risk": "low",
+      "install": { "type": "pacman", "package": "ripgrep", "repo": "extra" },
+      "version": "14.1.0-1",
+      "provenance": { "method": "package-manager", "confidence": 1, "evidence": ["pacman -Qe"] },
+      "private": false
+    },
+    {
+      "id": "aur:example-aur-app", "name": "example-aur-app", "kind": "gui-app", "category": "package", "risk": "medium",
+      "install": { "type": "aur", "package": "example-aur-app" },
+      "version": "2.4.1-1",
+      "provenance": { "method": "package-manager", "confidence": 1, "evidence": ["pacman -Qem"] },
+      "private": false
+    },
+    {
+      "id": "cargo:bat", "name": "bat", "kind": "cli", "category": "registry-tool", "risk": "low",
+      "install": { "type": "cargo", "crate": "bat", "locked": true },
+      "version": "0.24.0",
+      "provenance": { "method": "registry", "confidence": 0.95, "evidence": ["~/.cargo/.crates2.json"] },
+      "private": false
+    },
+    {
+      "id": "go:example-go-tool", "name": "example-go-tool", "kind": "cli", "category": "registry-tool", "risk": "low",
+      "install": { "type": "go", "module": "example.com/org/example-go-tool/cmd/example-go-tool" },
+      "version": "v1.2.3",
+      "provenance": { "method": "build-metadata", "confidence": 0.9, "evidence": ["go version -m ~/go/bin/example-go-tool"] },
+      "private": false
+    },
+    {
+      "id": "npm:example-npm-cli", "name": "example-npm-cli", "kind": "cli", "category": "registry-tool", "risk": "low",
+      "install": { "type": "npm", "package": "@example/example-npm-cli" },
+      "version": "5.0.0",
+      "provenance": { "method": "registry", "confidence": 0.95, "evidence": ["npm ls -g"] },
+      "private": false
+    },
+    {
+      "id": "uv:example-uv-tool", "name": "example-uv-tool", "kind": "cli", "category": "registry-tool", "risk": "low",
+      "install": { "type": "uv", "package": "example-uv-tool" },
+      "version": "0.9.1",
+      "provenance": { "method": "registry", "confidence": 0.95, "evidence": ["uv tool list"] },
+      "private": false
+    },
+    {
+      "id": "pipx:example-pipx-tool", "name": "example-pipx-tool", "kind": "cli", "category": "registry-tool", "risk": "low",
+      "install": { "type": "pipx", "package": "example-pipx-tool" },
+      "version": "1.0.0",
+      "provenance": { "method": "registry", "confidence": 0.95, "evidence": ["pipx list"] },
+      "private": false
+    },
+    {
+      "id": "mise:node", "name": "node", "kind": "runtime", "category": "registry-tool", "risk": "low",
+      "install": { "type": "mise", "tool": "node", "backend": "core" },
+      "version": "24.0.0",
+      "provenance": { "method": "registry", "confidence": 1, "evidence": ["mise ls"] },
+      "private": false
+    },
+    {
+      "id": "plugin:example-plugin", "name": "example-plugin", "kind": "plugin", "category": "plugin", "risk": "medium",
+      "install": { "type": "plugin", "plugin_id": "example-plugin", "source": "https://example.com/org/example-plugin.git" },
+      "version": "0.3.0",
+      "provenance": { "method": "adjacent-evidence", "confidence": 0.8, "evidence": ["~/.config/omarchy/plugins/example-plugin/.git"] },
+      "private": false
+    },
+    {
+      "id": "git:example-repo-tool", "name": "example-repo-tool", "kind": "cli", "category": "repo-tool", "risk": "high",
+      "install": {
+        "type": "git-build",
+        "url": "https://example.com/org/example-repo-tool.git",
+        "ref": "v1.4.0",
+        "build": ["make", "make install PREFIX=$HOME/.local"]
+      },
+      "version": "1.4.0",
+      "provenance": { "method": "adjacent-evidence", "confidence": 0.7, "evidence": ["git clone under ~/src", "symlink target of ~/.local/bin/example-repo-tool"] },
+      "private": false
+    },
+    {
+      "id": "bin:example-release-tool", "name": "example-release-tool", "kind": "cli", "category": "repo-tool", "risk": "high",
+      "install": {
+        "type": "release-binary",
+        "url": "https://example.com/org/example-release-tool/releases/download/v2.0.0/example-release-tool-linux-amd64.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "dest": "~/.local/bin/example-release-tool"
+      },
+      "version": "2.0.0",
+      "provenance": { "method": "version-flag", "confidence": 0.6, "evidence": ["example-release-tool --version"] },
+      "private": false
+    },
+    {
+      "id": "appimage:example-app", "name": "example-app", "kind": "gui-app", "category": "repo-tool", "risk": "medium",
+      "install": { "type": "appimage", "url": "https://example.com/example-app/Example-App-1.0.AppImage", "dest": "~/.local/share/appimages/Example-App.AppImage" },
+      "version": "1.0",
+      "provenance": { "method": "name-search", "confidence": 0.4, "evidence": ["name match, confirmed by user"] },
+      "private": false
+    },
+    {
+      "id": "script:example-installer", "name": "example-installer", "kind": "cli", "category": "repo-tool", "risk": "high",
+      "install": { "type": "script", "url": "https://example.com/install.sh", "interpreter": "bash" },
+      "version": null,
+      "provenance": { "method": "shell-history", "confidence": 0.5, "evidence": ["shell history matched curl | bash"] },
+      "private": false
+    },
+    {
+      "id": "copy:~/.local/bin/my-helper", "name": "my-helper", "kind": "script", "category": "repo-tool", "risk": "medium",
+      "install": { "type": "copy", "path": "~/.local/bin/my-helper" },
+      "version": null,
+      "provenance": { "method": "fallback", "confidence": 0.2, "evidence": ["no registry or repo evidence found"] },
+      "private": true
+    },
+    {
+      "id": "unknown:mystery-bin", "name": "mystery-bin", "kind": "cli", "category": "repo-tool", "risk": "high",
+      "install": { "type": "unknown", "path": "/usr/local/bin/mystery-bin", "hint": "no --version output" },
+      "version": null,
+      "provenance": { "method": "none", "confidence": 0, "evidence": [] },
+      "private": false
+    },
+    {
+      "id": "config:example-config", "name": "example config", "kind": "config", "category": "config", "risk": "low",
+      "install": { "type": "copy", "path": "~/.config/example/config.toml" },
+      "version": null,
+      "provenance": { "method": "package-manager", "confidence": 0.9, "evidence": ["differs from /etc/skel"] },
+      "private": true
+    },
+    {
+      "id": "service:example.service", "name": "example.service", "kind": "service", "category": "service", "risk": "medium",
+      "install": { "type": "unknown", "hint": "enabled unit not in baseline" },
+      "version": null,
+      "provenance": { "method": "adjacent-evidence", "confidence": 0.5, "evidence": ["systemctl is-enabled"] },
+      "private": false
+    }
+  ]
+}

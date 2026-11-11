@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "machine": { "hostname": "h", "omarchy_version": "3.0.0", "arch": "x86_64", "gpu": [], "form_factor": "laptop" },
+  "items": [
+    {
+      "id": "cargo:bat", "name": "bat", "kind": "cli", "category": "registry-tool", "risk": "low",
+      "install": { "type": "cargo", "package": "bat" },
+      "version": "0.24.0", "private": false,
+      "provenance": { "method": "registry", "confidence": 0.9, "evidence": [] }
+    }
+  ]
+}

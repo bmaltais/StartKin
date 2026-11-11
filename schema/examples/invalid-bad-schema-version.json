@@ -1,0 +1,5 @@
+{
+  "schema_version": "2.0",
+  "machine": { "hostname": "h", "omarchy_version": "3.0.0", "arch": "x86_64", "gpu": [], "form_factor": "laptop" },
+  "items": []
+}
