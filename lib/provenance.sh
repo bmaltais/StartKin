@@ -287,9 +287,11 @@ prov_try_strings_url() {
   prov_set build-metadata 0.5 "$(prov_git_build_json "${CLONE_URL[$found]}" "${CLONE_HEAD[$found]}")" "strings: repo URL of clone $(prov_tilde "$found") in binary"
 }
 
-# prov_try_history NAME : a shell-history line that installed NAME. Evidence keeps the verb and target only.
+# prov_try_history NAME : a shell-history line that installed NAME. The history line itself never leaves this
+# function (docs/secrets-policy.md, rule 3): evidence is the derived fact only, "installed via shell history:
+# <verb>" plus the repo URL when it is a plain https URL without credentials, query or fragment.
 prov_try_history() {
-  local name=$1 f line target
+  local name=$1 f line target fact
   while IFS= read -r f; do
     [[ -r $f ]] || continue
     line=$(grep -a -E "(git clone|go install|cargo install|npm (i|install) .*-g|pipx install|uv tool install)[^|;&]*$name" -- "$f" 2>/dev/null | grep -a -v -i -E 'token|secret|passw|ghp_|authorization' | tail -n1) || true
@@ -300,29 +302,31 @@ prov_try_history() {
       *"git clone "*)
         target=$(sed -nE 's#.*git clone( -[^ ]+)* ((https?://|git@)[^ ]+).*#\2#p' <<<"$line" | head -n1)
         [[ $target =~ ^(https?://|git@)[^/:]+[/:][^/]+/[^/]+$ && ${target,,} == *"${name,,}"* ]] || continue # a repo URL, not an issue link
-        prov_set shell-history 0.4 "$(prov_git_build_json "$target" "")" "history: $line"
+        fact="installed via shell history: git clone"
+        [[ $target =~ ^https://[^/@?#]+/[^@?#]+$ ]] && fact+=" $target"
+        prov_set shell-history 0.4 "$(prov_git_build_json "$target" "")" "$fact"
         return 0
         ;;
       *"cargo install "*)
-        prov_set shell-history 0.4 "$(jq -nc --arg c "$name" '{type: "cargo", crate: $c}')" "history: $line"
+        prov_set shell-history 0.4 "$(jq -nc --arg c "$name" '{type: "cargo", crate: $c}')" "installed via shell history: cargo install"
         return 0
         ;;
       *"go install "*)
         target=$(grep -oE '[A-Za-z0-9.-]+\.[a-z]+/[^[:space:]@]+' <<<"$line" | head -n1) || true
         [[ -n $target ]] || continue
-        prov_set shell-history 0.4 "$(jq -nc --arg m "$target" '{type: "go", module: $m}')" "history: $line"
+        prov_set shell-history 0.4 "$(jq -nc --arg m "$target" '{type: "go", module: $m}')" "installed via shell history: go install"
         return 0
         ;;
       *"pipx install "*)
-        prov_set shell-history 0.4 "$(jq -nc --arg c "$name" '{type: "pipx", package: $c}')" "history: $line"
+        prov_set shell-history 0.4 "$(jq -nc --arg c "$name" '{type: "pipx", package: $c}')" "installed via shell history: pipx install"
         return 0
         ;;
       *"uv tool install "*)
-        prov_set shell-history 0.4 "$(jq -nc --arg c "$name" '{type: "uv", package: $c}')" "history: $line"
+        prov_set shell-history 0.4 "$(jq -nc --arg c "$name" '{type: "uv", package: $c}')" "installed via shell history: uv tool install"
         return 0
         ;;
       *npm*)
-        prov_set shell-history 0.4 "$(jq -nc --arg c "$name" '{type: "npm", package: $c}')" "history: $line"
+        prov_set shell-history 0.4 "$(jq -nc --arg c "$name" '{type: "npm", package: $c}')" "installed via shell history: npm install -g"
         return 0
         ;;
     esac

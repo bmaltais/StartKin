@@ -194,6 +194,25 @@ test_history_without_secrets() {
   assert_json_eq '.provenance.method' '"none"' "$(item bar "$all")" "lines that look secret are ignored"
 }
 
+test_history_evidence_is_only_the_derived_fact() {
+  setup
+  fake_elf "$BIN/foo"
+  fake_elf "$BIN/rg3"
+  fake_elf "$BIN/sshy"
+  # secrets-policy rule 3: raw command lines (and anything riding on them) never reach the manifest
+  printf 'git clone https://github.com/me/foo.git ~/x # AKIAIOSFODNN7EXAMPLE\ncargo install rg3 --registry-key=Zk3jQ9xLm2Vb8Nc4Rt7Ws1Yp5Qa6\ngit clone git@github.com:me/sshy.git --depth 1 ZZtopQ7xV9mK2\n' >"$HOME/.history"
+  all=$(scan_repo_tools)
+  assert_json_eq '.[] | select(.name=="foo") | .provenance.evidence | map(select(startswith("installed via")))' \
+    '["installed via shell history: git clone https://github.com/me/foo.git"]' "$all"
+  assert_json_eq '.[] | select(.name=="rg3") | .provenance.evidence | map(select(startswith("installed via")))' \
+    '["installed via shell history: cargo install"]' "$all"
+  assert_json_eq '.[] | select(.name=="sshy") | .provenance.evidence | map(select(startswith("installed via")))' \
+    '["installed via shell history: git clone"]' "$all" "a non-https remote is not echoed"
+  for s in AKIAIOSFODNN7EXAMPLE Zk3jQ9xLm2Vb8Nc4Rt7Ws1Yp5Qa6 ZZtopQ7xV9mK2 "--depth"; do
+    assert_eq 0 "$(grep -cF -- "$s" <<<"$all")" "[$s] leaked"
+  done
+}
+
 test_history_cargo_is_not_mistaken_for_go() {
   setup
   fake_elf "$BIN/rg2"
