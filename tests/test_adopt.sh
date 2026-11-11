@@ -14,7 +14,8 @@ scan_fx() {
   cat <<'JSON'
 [{"id":"repo-tool:mystery","name":"mystery","version":null,"install":{"type":"unknown","path":"/home/u/.local/bin/mystery"},"provenance":{"method":"none","confidence":0,"evidence":[]}},
  {"id":"repo-tool:guess","name":"guess","version":"1.0","install":{"type":"git-build","url":"https://github.com/o/guess"},"provenance":{"method":"name-search","confidence":0.45,"evidence":["needs confirmation"]}},
- {"id":"repo-tool:sure","name":"sure","version":null,"install":{"type":"go","module":"example.com/sure"},"provenance":{"method":"build-metadata","confidence":0.95,"evidence":[]}}]
+ {"id":"repo-tool:sure","name":"sure","version":null,"install":{"type":"go","module":"example.com/sure"},"provenance":{"method":"build-metadata","confidence":0.95,"evidence":[]}},
+ {"id":"aur:somepkg","name":"somepkg","version":"1","install":{"type":"aur","package":"somepkg"},"provenance":{"method":"package-manager","confidence":0.8,"evidence":["pacman -Qe"]}}]
 JSON
 }
 EOF
@@ -25,6 +26,21 @@ test_list_json_has_only_unconfirmed() {
   setup
   assert_status 0 "$BIN" adopt --list --json
   assert_json_eq '[.[].id]' '["repo-tool:mystery","repo-tool:guess"]' "$T_OUT"
+}
+
+test_list_hides_package_manager_items_unless_all() {
+  setup
+  assert_status 0 "$BIN" adopt --list --json
+  assert_json_eq 'map(select(.id == "aur:somepkg")) | length' '0' "$T_OUT" "AUR item at 0.8 is not noise worth asking about"
+  assert_status 0 "$BIN" adopt --list --json --all
+  assert_json_eq '[.[].id]' '["repo-tool:mystery","repo-tool:guess","aur:somepkg"]' "$T_OUT"
+  assert_status 0 "$BIN" adopt --list --all
+  assert_contains "$T_OUT" "aur:somepkg"
+}
+
+test_all_needs_list_or_walk_not_a_source() {
+  setup
+  assert_status 2 "$BIN" adopt repo-tool:mystery --all --confirm
 }
 
 test_list_plain_is_readable() {

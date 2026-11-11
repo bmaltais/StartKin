@@ -4,15 +4,20 @@
 # Needs lib/common.sh, lib/scan.sh, lib/registry.sh, lib/ui.sh.
 # shellcheck shell=bash
 
-ADOPT_USAGE='Usage: startkin adopt [--list [--json]]
+ADOPT_USAGE='Usage: startkin adopt [--list [--json]] [--all]
        startkin adopt ITEM_ID SOURCE
 Sources: --git URL [--ref REF] [--build CMD]...   --go MODULE   --cargo CRATE
          --release URL [--sha256 HEX]   --script URL   --copy   --confirm (keep the scanner'"'"'s guess)
-Without arguments: walk through the items needing confirmation (gum if installed, plain prompts otherwise).'
+Without arguments: walk through the items needing confirmation (gum if installed, plain prompts otherwise).
+--all also includes items a package manager already vouches for (pacman/AUR at confidence below 0.9).'
 
-# adopt_candidates : JSON array of scanned items that need confirmation (no provenance, or confidence below 0.9)
+# adopt_candidates [all] : JSON array of scanned items that need confirmation (no provenance, or confidence below 0.9).
+# Items a package manager or language registry vouches for (an AUR package at 0.8) are left out unless "all" is given:
+# they have a known source, so asking about them is noise.
 adopt_candidates() {
-  scan_collect | jq -c 'map(select(.provenance.method == "none" or .provenance.confidence < 0.9))'
+  scan_collect | jq -c --argjson all "$([[ ${1:-} == all ]] && echo true || echo false)" '
+    map(select((.provenance.method == "none" or .provenance.confidence < 0.9)
+               and ($all or (.provenance.method != "package-manager" and .provenance.method != "registry"))))'
 }
 
 # adopt_item ID : the scanned item with that id as the scanners reported it (no registry overlay), or fail
@@ -78,7 +83,7 @@ adopt_record() {
 adopt_interactive() {
   local items n i item opts choice val ref sha cmd rc install
   local -a builds
-  items=$(adopt_candidates)
+  items=$(adopt_candidates "$ADOPT_SCOPE")
   n=$(jq length <<<"$items")
   if ((n == 0)); then echo "nothing to adopt: every item has a known source"; return 0; fi
   for ((i = 0; i < n; i++)); do
@@ -115,7 +120,7 @@ adopt_interactive() {
 
 # cmd_adopt ARGS... : the subcommand
 cmd_adopt() {
-  local list=0 json=0 id="" type="" val="" ref="" sha="" a
+  local list=0 json=0 all=0 id="" type="" val="" ref="" sha="" a
   local -a builds=()
   set_source() { # TYPE VALUE
     [[ -z $type ]] || die -c 2 "adopt: give one source only"
@@ -127,6 +132,7 @@ cmd_adopt() {
       -h | --help) echo "$ADOPT_USAGE"; return 0 ;;
       --list) list=1 ;;
       --json) json=1 ;;
+      --all) all=1 ;;
       --confirm | --copy) set_source "${a#--}" "" ;;
       --git | --go | --cargo | --release | --script)
         (($# >= 2)) || die -c 2 "adopt: $a needs a value"
@@ -141,10 +147,13 @@ cmd_adopt() {
     shift
   done
   require_cmd jq
+  ADOPT_SCOPE=""
+  ((all)) && ADOPT_SCOPE=all
+  ((all)) && [[ -n $id || -n $type ]] && die -c 2 "adopt: --all goes with --list or the walk-through, not with a source"
   if ((list)); then
     [[ -z $id && -z $type ]] || die -c 2 "adopt: --list takes no item or source"
     local items
-    items=$(adopt_candidates)
+    items=$(adopt_candidates "$ADOPT_SCOPE")
     if ((json)); then
       printf '%s\n' "$items"
     else

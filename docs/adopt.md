@@ -37,15 +37,15 @@ A missing file is an empty registry. An unreadable one is never overwritten: sca
 ## `startkin adopt`
 
 ```
-startkin adopt --list [--json]        items needing confirmation (method none, or confidence < 0.9, after the overlay)
-startkin adopt                        walk through them interactively
+startkin adopt --list [--json] [--all]  items needing confirmation (method none, or confidence < 0.9, after the overlay)
+startkin adopt [--all]                walk through them interactively
 startkin adopt ITEM_ID --git URL [--ref REF] [--build CMD]...
 startkin adopt ITEM_ID --go MODULE | --cargo CRATE | --release URL [--sha256 HEX] | --script URL
 startkin adopt ITEM_ID --copy         copy the local file (its path comes from the scan)
 startkin adopt ITEM_ID --confirm      accept the scanner's guess as it is
 ```
 
-Interactive mode uses `gum` when it is installed and stdin/stdout are a terminal, plain `read` prompts otherwise (`STARTKIN_NO_GUM=1` forces plain). Prompts go to stderr. End of input stops the walk; already-recorded answers stay. Exit codes: 0 ok, 1 failed (unknown item, nothing to confirm, secret refused), 2 bad usage or value.
+By default the list leaves out items a package manager already vouches for (`package-manager` or `registry` method, e.g. an AUR package at 0.8): what is left is mostly untraced repo tools and heuristic guesses (name search, history, launchers, services). `--all` includes them. Interactive mode uses `gum` when it is installed and stdin/stdout are a terminal, plain `read` prompts otherwise (`STARTKIN_NO_GUM=1` forces plain). Prompts go to stderr. End of input stops the walk; already-recorded answers stay. Exit codes: 0 ok, 1 failed (unknown item, nothing to confirm, secret refused), 2 bad usage or value.
 
 ## `startkin track install`
 
