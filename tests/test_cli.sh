@@ -131,6 +131,16 @@ test_scan_passes_file_name_derived_ids() {
   assert_json_eq '.items | length' '1' "$T_OUT"
 }
 
+test_scan_report_counts_provenance() {
+  mkdir "$T_TMP/s"
+  # shellcheck disable=SC2016 # the scanner body expands when it runs
+  echo 'scan_r() { jq -nc "[{id:\"repo-tool:a\",category:\"repo-tool\",provenance:{method:\"build-metadata\",confidence:0.95}},{id:\"repo-tool:b\",category:\"repo-tool\",provenance:{method:\"name-search\",confidence:0.45}},{id:\"repo-tool:c\",category:\"repo-tool\",provenance:{method:\"none\",confidence:0}},{id:\"pacman:x\",category:\"package\",provenance:{method:\"package-manager\",confidence:0.95}}]"; }' >"$T_TMP/s/r.sh"
+  STARTKIN_SCAN_DIR=$T_TMP/s assert_status 0 "$BIN" scan --report
+  assert_contains "$T_OUT" "items 3: exact 1, heuristic 1, unknown 1"
+  assert_contains "$T_OUT" "  name-search: 1"
+  assert_contains "$T_OUT" "  none: 1"
+}
+
 test_scan_probe_is_off_unless_asked() {
   mkdir "$T_TMP/s"
   # shellcheck disable=SC2016 # the scanner body expands when it runs

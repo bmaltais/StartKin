@@ -24,8 +24,9 @@ usage() {
 Usage: startkin <command> [options]
 
 Commands:
-  scan [--json] [--probe]
+  scan [--json | --report] [--probe]
                   Detect what was added after the Omarchy install (--json: print the manifest;
+                  --report: print provenance counts instead;
                   --probe: also run unowned CLI binaries with --version/--help, off by default)
   adopt           Confirm where untraced items came from (see docs/adopt.md)
   track install  Run an install and record its source, version and date
@@ -44,16 +45,24 @@ EOF
 not_implemented() { die -c 2 "$1: not implemented"; }
 
 cmd_scan() {
-  local json=0 a
+  local json=0 report=0 a
   for a in "$@"; do
     case $a in
       --json) json=1 ;;
+      --report) report=1 ;;
       --probe) export STARTKIN_PROBE=1 ;;
       *) die -c 2 "scan: unknown option: $a" ;;
     esac
   done
-  ((json)) || not_implemented scan
+  ((json && report)) && die -c 2 "scan: --json and --report are exclusive"
+  ((json || report)) || not_implemented scan
   require_cmd jq
+  if ((report)); then
+    local rc=0
+    scan_collect | prov_report
+    rc=${PIPESTATUS[0]}
+    return "$rc"
+  fi
   scan_manifest
 }
 

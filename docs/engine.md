@@ -29,6 +29,8 @@ The dispatcher auto-discovers every `lib/scan/*.sh` (sorted by file name). To ad
 
 ## Manifest header
 
+`startkin scan --report` prints how well the untracked binaries and app dirs (`repo-tool` items) were traced: `items N: exact E, heuristic H, unknown U` (exact = confidence 0.9 or more, heuristic = between 0 and 0.9, unknown = method `none`) and one `  METHOD: COUNT` line per provenance method (`prov_report` in `lib/provenance.sh`; the registry overlay is applied first, so adopted items count as exact). It exits 3 when a scanner failed, like `--json`.
+
 `startkin scan --json` prints `{schema_version: "1.0", generated_at, machine{hostname, omarchy_version, arch, gpu[], form_factor}, items[]}`, validated by `schema/manifest.schema.json` (`scripts/validate-manifest`). `omarchy_version` is the pacman version of `omarchy` (or `omarchy-dev`), `"unknown"` if neither is installed. `gpu` has one vendor string per GPU (`intel`, `amd`, `nvidia`, `other`). `form_factor` is `vm` when `systemd-detect-virt --vm` says so, otherwise from the DMI chassis type: `desktop`, `laptop`, `server`, `other`. If the schema changes, the schema wins and `lib/scan.sh`/`lib/machine.sh` follow.
 
 ## Tests
