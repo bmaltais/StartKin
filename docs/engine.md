@@ -42,3 +42,7 @@ Plain bash, no bats: bats is not installed by default on Omarchy, and a 40-line 
 ## Devkit
 
 `scripts/devkit` is the omarchy-plugin-devkit submodule pinned to a release tag; `devkit.conf` configures it. After cloning: `git submodule update --init`. Do not edit files inside it.
+
+## Read-only by default: probing is opt-in
+
+A scan never executes anything it did not ship. Tracing an unowned binary can ask it for `--version` and `--help`, but that is off unless `STARTKIN_PROBE=1` is set or `startkin scan --probe` is given. With probing on, a binary is still never run when it looks like a GUI app: it has a matching `.desktop` `Exec=` (dirs in `STARTKIN_DESKTOP_DIRS`, default the user, `/usr/share` and `/usr/local/share` applications dirs), it links `libwayland`/`libX11`/`libxcb`/`libQt*`/`libgtk`/`libSDL`/GL/Vulkan (`readelf -d`; if the libraries cannot be read the binary counts as GUI), it is an AppImage, or it lives in a Qt/Quickshell/Electron app dir. Probes run with `env -i` plus `PATH` and `HOME` only (no display or session bus), stdin from `/dev/null`, in their own session, and the whole process group is killed after 3 seconds. Without probing, binaries are traced from build metadata (`go version -m`, `strings`), symlinks, sibling files, clones and history only, so fewer versions and `--help` URLs are found.

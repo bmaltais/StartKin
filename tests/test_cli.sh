@@ -102,6 +102,17 @@ test_scan_json_fails_loudly_when_assembly_fails() {
   assert_eq "" "$T_OUT"
 }
 
+test_scan_probe_is_off_unless_asked() {
+  mkdir "$T_TMP/s"
+  # shellcheck disable=SC2016 # the scanner body expands when it runs
+  echo 'scan_p() { jq -nc --arg p "${STARTKIN_PROBE:-0}" "[{id: \$p}]"; }' >"$T_TMP/s/p.sh"
+  unset STARTKIN_PROBE
+  STARTKIN_SCAN_DIR=$T_TMP/s assert_status 0 "$BIN" scan --json
+  assert_json_eq '.items[0].id' '"0"' "$T_OUT"
+  STARTKIN_SCAN_DIR=$T_TMP/s assert_status 0 "$BIN" scan --json --probe
+  assert_json_eq '.items[0].id' '"1"' "$T_OUT"
+}
+
 test_scan_json_validates_against_schema() {
   mkdir "$T_TMP/empty"
   STARTKIN_SCAN_DIR=$T_TMP/empty "$BIN" scan --json >"$T_TMP/m.json"

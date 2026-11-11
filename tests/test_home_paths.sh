@@ -37,7 +37,7 @@ esac
 exit 0'
   export STARTKIN_OMARCHY_DIR=$T_TMP/omarchy STARTKIN_SKEL_DIR=$T_TMP/skel STARTKIN_REGISTRY_FILE=$T_TMP/reg/registry.json
   export STARTKIN_BIN_DIRS=$HOME/.local/bin STARTKIN_APP_DIRS=$HOME/.local/share/zz STARTKIN_GIT_ROOTS=$HOME/src
-  export STARTKIN_NO_EXEC=1 STARTKIN_HISTORY_FILES=$HOME/.history
+  export STARTKIN_HISTORY_FILES=$HOME/.history
 }
 
 test_manifest_and_warnings_hold_no_home_directory() {

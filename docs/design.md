@@ -17,7 +17,7 @@ Everything added after the Omarchy install, by diffing against a baseline for th
 Each item carries how to reproduce it: `pacman`, `aur`, `cargo`, `go`, `npm`, `uv`, `pipx`, `mise`, `plugin`, `git-build`, `release-binary`, `appimage`, `script`, `copy`, `unknown`.
 
 ## Provenance for untracked binaries
-Order: registry lookup, embedded build metadata (`go version -m`, `strings`), `--version`/`--help`, adjacent evidence (git clone, symlink target, shell history), name search with user confirmation, fallback `copy`. Untraced items go through an "adopt" wizard once; the answer is stored.
+Order: registry lookup, embedded build metadata (`go version -m`, `strings`), `--version`/`--help` (opt-in, `scan --probe`; never for GUI apps), adjacent evidence (git clone, symlink target, shell history), name search with user confirmation, fallback `copy`. Untraced items go through an "adopt" wizard once; the answer is stored.
 
 ## Tags and profiles
 Items carry `category`, `kind`, `risk` tags. A profile is a tag query plus user overrides, saved as a small file. Tags come from rules first, AI second, manual override always wins; results are cached per manifest.

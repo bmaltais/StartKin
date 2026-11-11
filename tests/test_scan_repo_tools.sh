@@ -22,6 +22,7 @@ setup() {
   # Fake binaries start with "ELF" instead of the real magic so the bash stubs below can stand in for exec.
   prov_is_elf() { [[ -f $1 && $(head -c3 -- "$1") == ELF ]]; }
   prov_probe() { return 0; }
+  unset STARTKIN_PROBE
 }
 
 # fake_elf PATH [BODY] : an "ELF" test binary

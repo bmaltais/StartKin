@@ -7,7 +7,9 @@
 #   STARTKIN_PLUGIN_DIR     Omarchy plugins dir; links into it belong to the plugin scanner (default ~/.config/omarchy/plugins)
 #   STARTKIN_REGISTRY_DIRS  colon list of dirs owned by registry tools (uv, mise, cargo...); links into them are skipped
 #   STARTKIN_HISTORY_FILES  colon list of shell history files (default ~/.bash_history:~/.zsh_history)
-#   STARTKIN_NO_EXEC=1      never run a binary (--version/--help probes are skipped)
+#   STARTKIN_PROBE=1        allow running unowned CLI binaries with --version/--help (`startkin scan --probe`).
+#                           Off by default: scanning must be read-only. GUI-looking binaries are never run.
+#   STARTKIN_DESKTOP_DIRS   colon list of .desktop directories used to recognise GUI launchers
 # shellcheck shell=bash
 
 # Results of prov_trace, read by the caller.
@@ -90,11 +92,44 @@ prov_repo_key() {
 # prov_strings MINLEN FILE : printable strings of the first 32 MB of FILE (big AppImages would take minutes)
 prov_strings() { head -c 33554432 -- "$2" 2>/dev/null | strings -n "$1" 2>/dev/null || true; }
 
-# prov_probe FILE FLAG : first 4 KB of FILE FLAG's output (3 s limit, no stdin); empty when exec is disabled
+prov_desktop_dirs() { prov_dirs STARTKIN_DESKTOP_DIRS "$HOME/.local/share/applications:/usr/share/applications:/usr/local/share/applications"; }
+
+# prov_needed FILE : the shared libraries an ELF file links (DT_NEEDED), one per line; fails when they cannot be read
+prov_needed() {
+  command -v readelf >/dev/null 2>&1 || return 1
+  readelf -d -- "$1" 2>/dev/null | sed -nE 's/.*\(NEEDED\).*\[(.*)\]/\1/p'
+}
+
+# prov_gui_like FILE : true when FILE looks like (or might be) a GUI app, so it must never be run. Unknown counts as GUI.
+prov_gui_like() {
+  local r base d x libs exe
+  r=$(readlink -f -- "$1" 2>/dev/null) || return 0
+  base=${1##*/}
+  case $r in
+    *.AppImage | */quickshell* | */[Ee]lectron* | */qt[0-9]*/*) return 0 ;;
+  esac
+  d=$(dirname -- "$r")
+  [[ -e $d/resources/app.asar || -e $d/chrome-sandbox || -e $d/libffmpeg.so ]] && return 0
+  while IFS= read -r x; do
+    [[ -d $x ]] || continue
+    # first word of every Exec= line, quotes dropped
+    while IFS= read -r exe; do
+      exe=${exe//[\"\']/}
+      [[ $exe == "$1" || $exe == "$r" || ${exe##*/} == "$base" || ${exe##*/} == "${r##*/}" ]] && return 0
+    done < <(awk -F= '$1 == "Exec" { split(substr($0, 6), w, " "); print w[1] }' "$x"/*.desktop 2>/dev/null)
+  done < <(prov_desktop_dirs)
+  libs=$(prov_needed "$r") || return 0
+  grep -qE '^lib(wayland|X11|xcb|Qt[0-9]|gtk|gdk|SDL|glfw|EGL|GL\.|GLX|vulkan|adwaita|cef|electron)' <<<"$libs" && return 0
+  return 1
+}
+
+# prov_probe FILE FLAG : first 4 KB of FILE FLAG's output. Only with STARTKIN_PROBE=1, never for GUI-looking
+# binaries; runs with a sanitized environment (no display or session bus), no stdin, in its own process group
+# and session, killed (group included) after 3 s.
 prov_probe() {
-  [[ ${STARTKIN_NO_EXEC:-0} == 1 ]] && return 0
-  [[ $(readlink -f -- "$1" 2>/dev/null) == *.AppImage ]] && return 0 # a GUI app, not a CLI to poke at
-  timeout 3 "$1" "$2" </dev/null 2>&1 | head -c 4096 || true
+  [[ ${STARTKIN_PROBE:-0} == 1 ]] || return 0
+  prov_gui_like "$1" && return 0
+  env -i PATH="$PATH" HOME="$HOME" setsid timeout --kill-after=1 3 "$1" "$2" </dev/null 2>&1 | head -c 4096 || true
 }
 
 # prov_version_of TEXT : the first version-looking token of TEXT
