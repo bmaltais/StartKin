@@ -8,6 +8,7 @@ The engine is bash + jq (decision: no compiled language; revisit only if it outg
 |---|---|
 | `bin/startkin` | Dispatcher: `scan`, `export`, `apply`, `peers`, `--version`, `--help`. `--version`, `--help`, `scan --json`, `export`, `adopt` and `track install` are real; the rest print `not implemented` and exit 2. |
 | `lib/common.sh` | Shared helpers: `log`, `warn`, `die [-c CODE]`, `require_cmd`, `version`, `now_utc`. |
+| `lib/drift.sh` | Omarchy version drift: `drift_compare_versions`, `drift_compare_machines`, `drift_warn`, `drift_check_manifest` (see "Version drift"). |
 | `lib/machine.sh` | Machine info for the manifest header (hostname, Omarchy version from pacman, arch, GPU vendors from `lspci`, form factor). |
 | `lib/scan.sh` | Scanner discovery and manifest assembly. |
 | `lib/registry.sh` | User-confirmed provenance registry and the scan overlay (`docs/adopt.md`). |
@@ -37,6 +38,10 @@ The dispatcher auto-discovers every `lib/scan/*.sh` (sorted by file name). To ad
 ## Export and snapshots
 
 `startkin export [--out FILE] [--from SNAPSHOT]` (docs/design.md, Saved snapshots). Without options it prints the live manifest, exactly like `scan --json`. `--out FILE` writes it to FILE instead (mode 600, via a temp file in the same directory and a rename, so a failed export never truncates an existing snapshot). `--from SNAPSHOT` uses a saved manifest instead of scanning: it must be a JSON object with `schema_version` and an `items` array (else exit 1). Exit codes: 0 ok, 1 error, 2 usage, 3 a scanner failed (manifest still written), 4 withheld by the secrets gate. The gate (`docs/secrets-policy.md`, rule 4) runs on every path: live output through `scan_manifest`, snapshots through `export_gate_snapshot`. On a finding nothing is printed or written; kind and JSON location go to stderr.
+
+## Version drift
+
+Each manifest records the source's `machine.omarchy_version`; the scan baseline is always the scanning machine's own Omarchy, so a manifest only lists what was added on top of that version. When a manifest is applied on a machine with a different version, `lib/drift.sh` compares the two (`sort -V`: `same`, `source-older`, `source-newer`, `unknown`) and `drift_warn` warns once up front, never failing. Decision on items that became Omarchy defaults in a newer target version: they are not dropped or errored. Apply's normal "already present on the target" check treats them as satisfied and skips them, and when the versions differ the report says so ("now in Omarchy defaults or already installed"). Items from a newer source than the target warn that they may need things the target lacks. An `unknown` version on either side warns that defaults cannot be compared. Target-awareness (#15) reuses `drift_compare_machines`.
 
 ## Tests
 
