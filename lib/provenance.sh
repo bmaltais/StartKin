@@ -33,11 +33,7 @@ prov_registry_dirs() {
 prov_history_files() { prov_dirs STARTKIN_HISTORY_FILES "$HOME/.bash_history:$HOME/.zsh_history"; }
 
 # prov_tilde PATH : PATH with $HOME shortened to ~ (evidence must not leak the user name)
-prov_tilde() {
-  local p=$1
-  if [[ $p == "$HOME" || $p == "$HOME"/* ]]; then p="~${p#"$HOME"}"; fi
-  printf '%s' "$p"
-}
+prov_tilde() { tilde_path "$1"; }
 
 # prov_under PATH DIR : true when PATH is DIR or inside it
 prov_under() { [[ $1 == "$2" || $1 == "$2"/* ]]; }

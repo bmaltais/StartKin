@@ -79,21 +79,21 @@ services_item() {
   [[ $scope == user ]] && risk=low
 
   if [[ -n $frag && $frag == "$HOME"/* ]]; then
-    jq -n --arg id "service:$scope:$unit" --arg name "$unit" --arg risk "$risk" --arg path "$frag" --arg scope "$scope" '{
+    jq -n --arg id "service:$scope:$unit" --arg name "$unit" --arg risk "$risk" --arg path "$(tilde_path "$frag")" --arg scope "$scope" '{
       id: $id, name: $name, kind: "service", category: "service", risk: $risk,
       install: {type: "copy", path: $path}, version: null,
       provenance: {method: "adjacent-evidence", confidence: 0.7, evidence: ["enabled " + $scope + " unit", "unit file " + $path]},
       private: false}'
   elif [[ -n $frag ]] && owner=$(pacman -Qo "$frag" 2>/dev/null) && [[ $owner == *" is owned by "* ]]; then
     read -r pkg ver <<<"${owner##* is owned by }"
-    jq -n --arg id "service:$scope:$unit" --arg name "$unit" --arg risk "$risk" --arg pkg "$pkg" --arg ver "$ver" --arg scope "$scope" --arg frag "$frag" '{
+    jq -n --arg id "service:$scope:$unit" --arg name "$unit" --arg risk "$risk" --arg pkg "$pkg" --arg ver "$ver" --arg scope "$scope" --arg frag "$(tilde_path "$frag")" '{
       id: $id, name: $name, kind: "service", category: "service", risk: $risk,
       install: {type: "pacman", package: $pkg}, version: (if $ver == "" then null else $ver end),
       provenance: {method: "package-manager", confidence: 0.95, evidence: ["enabled " + $scope + " unit", "owned by " + $pkg + " (" + $frag + ")"]},
       private: false}'
   else
     local hint="systemctl ${sysctl[*]:1} enable $unit"
-    jq -n --arg id "service:$scope:$unit" --arg name "$unit" --arg risk "$risk" --arg hint "${hint//  / }" --arg scope "$scope" --arg frag "$frag" '{
+    jq -n --arg id "service:$scope:$unit" --arg name "$unit" --arg risk "$risk" --arg hint "${hint//  / }" --arg scope "$scope" --arg frag "$(tilde_path "$frag")" '{
       id: $id, name: $name, kind: "service", category: "service", risk: $risk,
       install: {type: "unknown", hint: $hint}, version: null,
       provenance: {method: "fallback", confidence: 0.3, evidence: (["enabled " + $scope + " unit"] + (if $frag == "" then [] else ["unit file " + $frag] end))},

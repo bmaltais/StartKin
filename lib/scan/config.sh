@@ -75,7 +75,7 @@ config_state() {
 config_item() {
   local rel=$1 status=$2 risk=$3 private=$4
   shift 4
-  jq -nc --arg rel "$rel" --arg path "$CONFIG_DIR/$rel" --arg cat "$(config_category "$rel")" --arg status "$status" \
+  jq -nc --arg rel "$rel" --arg path "$(tilde_path "$CONFIG_DIR/$rel")" --arg cat "$(config_category "$rel")" --arg status "$status" \
     --arg risk "$risk" --argjson private "$private" --args '{
       id: ("config:" + ($rel | gsub("\\s"; "_"))), name: $rel, kind: "config", category: "config", risk: $risk,
       install: {type: "copy", path: $path, dest: ("~/.config/" + $rel)},

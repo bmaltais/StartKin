@@ -81,7 +81,7 @@ test_local_user_unit_is_copy() {
   setup
   local out; out=$(scan_services)
   assert_json_eq '.[] | select(.id=="service:user:myjob.service") | [.risk,.install.type,.install.path]' \
-    "[\"low\",\"copy\",\"$HOME/.config/systemd/user/myjob.service\"]" "$out"
+    "[\"low\",\"copy\",\"~/.config/systemd/user/myjob.service\"]" "$out"
 }
 
 test_unowned_unit_is_unknown() {

@@ -45,7 +45,7 @@ repo_tools_item() {
   target=$(readlink -f -- "$path" 2>/dev/null || echo "$path")
   [[ $target == *.AppImage ]] && hint="AppImage"
   if [[ $R_METHOD == none ]]; then
-    R_INSTALL=$(jq -nc --arg p "$path" --arg h "$hint" '{type: "unknown", path: $p} + (if $h != "" then {hint: $h} else {} end)')
+    R_INSTALL=$(jq -nc --arg p "$(tilde_path "$path")" --arg h "$hint" '{type: "unknown", path: $p} + (if $h != "" then {hint: $h} else {} end)')
   fi
   where=$(prov_tilde "$(dirname -- "$path")")
   id="repo-tool:${name//[[:space:]]/_}"

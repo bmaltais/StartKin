@@ -44,7 +44,7 @@ test_unchanged_files_are_excluded_changed_and_added_reported() {
 test_item_shape_and_category_tag() {
   setup
   assert_json_eq '.[] | select(.id=="config:hypr/looknfeel.lua") | [.name,.kind,.category,.risk,.private,.version,.install.type,.install.path,.install.dest,.provenance.method,(.provenance.evidence|index("category: hypr") != null)]' \
-    "[\"hypr/looknfeel.lua\",\"config\",\"config\",\"low\",false,null,\"copy\",\"$H/hypr/looknfeel.lua\",\"~/.config/hypr/looknfeel.lua\",\"adjacent-evidence\",true]" "$(items)"
+    "[\"hypr/looknfeel.lua\",\"config\",\"config\",\"low\",false,null,\"copy\",\"~/.config/hypr/looknfeel.lua\",\"~/.config/hypr/looknfeel.lua\",\"adjacent-evidence\",true]" "$(items)"
 }
 
 test_matching_either_baseline_counts_as_shipped() {
@@ -61,7 +61,7 @@ test_added_directory_is_one_item() {
   put "$H/zathura/extra/more" 'x'
   assert_json_eq '[.[] | select(.id=="config:zathura")] | length' 1 "$(items)"
   assert_json_eq '[.[].id | select(startswith("config:zathura"))]' '["config:zathura"]' "$(items)"
-  assert_json_eq '.[] | select(.id=="config:zathura") | [.install.path,.private,.risk]' "[\"$H/zathura\",false,\"low\"]" "$(items)"
+  assert_json_eq '.[] | select(.id=="config:zathura") | [.install.path,.private,.risk]' "[\"~/.config/zathura\",false,\"low\"]" "$(items)"
 }
 
 test_user_theme_is_one_item_shipped_theme_is_not() {

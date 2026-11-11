@@ -34,7 +34,7 @@ scan_launchers() {
       *omarchy-launch-tui*) tags+=("omarchy tui") ;;
     esac
     id=launcher:${file//[[:space:]]/_}
-    items+=("$(jq -n --arg id "$id" --arg name "$name" --arg path "$f" --arg file "$file" \
+    items+=("$(jq -n --arg id "$id" --arg name "$name" --arg path "$(tilde_path "$f")" --arg file "$file" \
       --args '{
         id: $id, name: $name, kind: "launcher", category: "launcher", risk: "low",
         install: {type: "copy", path: $path},

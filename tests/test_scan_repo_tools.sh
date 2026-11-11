@@ -255,7 +255,7 @@ test_untraced_is_unknown() {
   fake_elf "$BIN/mystery"
   out=$(item mystery "$(scan_repo_tools)")
   assert_json_eq '.provenance' '{"method":"none","confidence":0,"evidence":["found in ~/.local/bin"]}' "$out"
-  assert_json_eq '.install' "{\"type\":\"unknown\",\"path\":\"$BIN/mystery\"}" "$out"
+  assert_json_eq '.install' "{\"type\":\"unknown\",\"path\":\"~/.local/bin/mystery\"}" "$out"
   assert_json_eq '.version' 'null' "$out"
 }
 
@@ -286,7 +286,7 @@ test_app_dir_without_link_is_reported() {
   fake_elf "$SHARE/lonely/lonely"
   all=$(scan_repo_tools)
   assert_json_eq '.[0].kind' '"other"' "$all"
-  assert_json_eq '.[0].install.path' "\"$SHARE/lonely\"" "$all"
+  assert_json_eq '.[0].install.path' "\"~/.local/share/lonely\"" "$all"
 }
 
 test_git_roots_env_overrides_default() {

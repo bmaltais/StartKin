@@ -67,10 +67,10 @@ scan_plugins() {
     # Install descriptor: git origin, else homepage, else a form StartKin cannot reproduce.
     local install method conf
     if [[ -n $cloned ]]; then
-      install=$(jq -nc --arg p "$d" --arg h "clone of built-in $cloned" '{type: "unknown", path: $p, hint: $h}')
+      install=$(jq -nc --arg p "$(tilde_path "$d")" --arg h "clone of built-in $cloned" '{type: "unknown", path: $p, hint: $h}')
       method=fallback conf=0.3
     elif [[ -n $origin ]]; then
-      source=$(plugins_clean_url "$origin")
+      source=$(tilde_path "$(plugins_clean_url "$origin")")
       install=$(jq -nc --arg i "$id" --arg s "$source" '{type: "plugin", plugin_id: $i, source: $s}')
       method=adjacent-evidence conf=0.9
       evidence+=("git remote origin")
@@ -79,10 +79,10 @@ scan_plugins() {
       method=adjacent-evidence conf=0.5
       evidence+=("manifest homepage")
     elif [[ -L $d ]]; then
-      install=$(jq -nc --arg p "$(readlink -f "$d")" --arg h "symlinked plugin folder, no git origin" '{type: "unknown", path: $p, hint: $h}')
+      install=$(jq -nc --arg p "$(tilde_path "$(readlink -f "$d")")" --arg h "symlinked plugin folder, no git origin" '{type: "unknown", path: $p, hint: $h}')
       method=fallback conf=0.3
     else
-      install=$(jq -nc --arg p "$d" '{type: "copy", path: $p}')
+      install=$(jq -nc --arg p "$(tilde_path "$d")" '{type: "copy", path: $p}')
       method=fallback conf=0.4
       evidence+=("plain copy, no git origin or homepage")
     fi

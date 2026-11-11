@@ -109,7 +109,7 @@ rt_go() {
     [[ ${path%%/*} == *.* ]] || continue # stdlib commands (cmd/go, cmd/gofmt): the toolchain, not a user install
     [[ $ver == "(devel)" ]] && ver=""
     printf '%s\t%s\t%s\n' "$path" "$ver" "${bin##*/}"
-  done | rt_items go module "go version -m $dir/*" 0.9 build-metadata
+  done | rt_items go module "go version -m $(tilde_path "$dir")/*" 0.9 build-metadata
 }
 
 scan_registry_tools() {

@@ -4,17 +4,32 @@
 
 STARTKIN_ROOT=${STARTKIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
 
+# tilde_path PATH : PATH with a leading $HOME shortened to ~ (manifests and messages must not leak the user name;
+# `apply` expands the ~ again, docs/manifest.md)
+tilde_path() {
+  local p=$1
+  if ((${#HOME} > 1)) && [[ $p == "$HOME" || $p == "$HOME"/* ]]; then p="~${p#"$HOME"}"; fi
+  printf '%s' "$p"
+}
+
+# tilde_text TEXT : TEXT with every "$HOME/" shortened to "~/" (for messages that embed paths)
+tilde_text() {
+  local t=$1 tl='~'
+  if ((${#HOME} > 1)); then t=${t//"$HOME"\//"$tl"/}; fi
+  printf '%s' "$t"
+}
+
 # log MSG... : diagnostic to stderr (stdout is reserved for data)
-log() { printf 'startkin: %s\n' "$*" >&2; }
+log() { printf 'startkin: %s\n' "$(tilde_text "$*")" >&2; }
 
 # warn MSG... : same, flagged
-warn() { printf 'startkin: warning: %s\n' "$*" >&2; }
+warn() { printf 'startkin: warning: %s\n' "$(tilde_text "$*")" >&2; }
 
 # die [-c CODE] MSG... : print and exit (default code 1)
 die() {
   local code=1
   if [[ ${1:-} == -c ]]; then code=$2; shift 2; fi
-  printf 'startkin: %s\n' "$*" >&2
+  printf 'startkin: %s\n' "$(tilde_text "$*")" >&2
   exit "$code"
 }
 

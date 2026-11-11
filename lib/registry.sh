@@ -70,10 +70,11 @@ registry_overlay() {
     return 0
   fi
   # the entries go in through a file descriptor: a big registry would exceed the argv limit
-  jq -c --slurpfile reg <(jq -c .entries <<<"$doc") '
+  jq -c --arg home "$HOME" --slurpfile reg <(jq -c .entries <<<"$doc") '
+    def tilde: if type == "string" and ($home | length) > 1 and (. == $home or startswith($home + "/")) then "~" + .[($home | length):] else . end;
     map(. as $i | ($reg[0][$i.id // ""]) as $e
       | if $e == null then $i else
-          $i + {install: $e.install,
+          $i + {install: ($e.install | if has("path") then .path |= tilde else . end),
                 version: ($e.version // $i.version // null),
                 provenance: {method: "user", confidence: 1,
                              evidence: ["confirmed by user (\($e.origin)) on \($e.recorded_at[:10])"]}}

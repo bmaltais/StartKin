@@ -32,7 +32,7 @@ test_item_shape() {
   local out; out=$(scan_launchers)
   assert_json_eq '.[] | select(.id=="launcher:My_Maps.desktop") | [.name,.kind,.category,.risk,.version,.private,.install.type,.provenance.method]' \
     '["My Maps","launcher","launcher","low",null,false,"copy","adjacent-evidence"]' "$out"
-  assert_json_eq '.[] | select(.id=="launcher:My_Maps.desktop") | .install.path' "\"$HOME/.local/share/applications/My Maps.desktop\"" "$out"
+  assert_json_eq '.[] | select(.id=="launcher:My_Maps.desktop") | .install.path' "\"~/.local/share/applications/My Maps.desktop\"" "$out"
 }
 
 test_webapp_and_tui_are_tagged_in_evidence() {

@@ -77,3 +77,4 @@ Discriminated on `type`; each variant is closed and has its own fields (required
 - `id` uniqueness within a manifest.
 - Whether `category` and `install.type` are consistent for an item.
 - Examples and real manifests must not carry secrets; `private: true` items should be redacted before leaving the machine.
+- Paths are `~`-relative. Every `path`, `dest`, `hint` and evidence string that names a file under the user's home writes it as `~/...` (for example `~/.config/hypr/bindings.lua`), never the literal home directory, so a manifest carries no user name and is portable between machines. The scanners and the registry overlay write them that way, warnings on stderr are shortened the same way, and `apply` expands the `~` against the target machine's home. A path outside home (`/usr/local/bin/x`) stays absolute.
