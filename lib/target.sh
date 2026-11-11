@@ -63,7 +63,7 @@ def checks($src; $tgt):
 
 .machine as $src
 | (.items | map(
-    | checks($src; $target) as $cs
+    checks($src; $target) as $cs
     | {id: .id,
        status: (if any($cs[]; .s == "incompatible") then "incompatible" elif ($cs | length) > 0 then "warn" else "ok" end),
        reasons: ($cs | map(.r))}
