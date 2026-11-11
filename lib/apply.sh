@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # `startkin apply` (#13): reproduce a manifest's packages and tools on this machine. Contract: docs/engine.md "Apply".
 #   startkin apply MANIFEST|--from-peer PEER [--dry-run] [--yes] [--only IDS]
+# Stages for plugins, config and services (#14) live in lib/apply_more.sh, backups and rollback in lib/backup.sh.
 # Needs lib/common.sh, drift.sh, machine.sh, target.sh, peers.sh, ui.sh. Source this.
 #
 # Shape (so #14 can add stages without touching the driver):
@@ -11,14 +12,17 @@
 # Nothing is executed without being shown first; --dry-run shows and executes nothing.
 # shellcheck shell=bash
 
-APPLY_STAGES=(packages registry repos)
+APPLY_STAGES=(packages registry repos plugins config services)
 APPLY_TILDE='~' # a literal tilde for patterns (shellcheck SC2088)
 
 # Run state (one apply per process).
 APPLY_DRY=0 APPLY_YES=0 APPLY_PEER="" APPLY_DRIFT="" APPLY_RES="" APPLY_TMP="" APPLY_WARN_IDS=""
+# Consents --yes does not give (docs/engine.md "Apply"): plugin installs and overwriting machine-specific files.
+APPLY_ALLOW_PLUGINS=0 APPLY_ALLOW_MACHINE=0
 
-# Result of the last apply_plan: commands to run, whether they run downloaded code, a note / reason.
-APPLY_CMDS=() APPLY_CODE=0 APPLY_NOTE=""
+# Result of the last apply_plan: commands to run, whether they run downloaded code, a note / reason, and the class of
+# consent the commands need (empty: the ordinary "Run this?" that --yes pre-approves; plugins: --allow-plugins).
+APPLY_CMDS=() APPLY_CODE=0 APPLY_NOTE="" APPLY_CONSENT=""
 
 # ---- small helpers -------------------------------------------------------------------------------------------------
 
@@ -69,6 +73,16 @@ apply_show() { local c; for c in "$@"; do printf '    $ %s\n' "$(tilde_text "$c"
 # apply_confirm PROMPT : --yes pre-approves; otherwise ask (end of input is no)
 apply_confirm() { ((APPLY_YES)) || ui_confirm "$1"; }
 
+# apply_confirm_for CLASS PROMPT : like apply_confirm, but a class that --yes does not cover (plugins, machine) needs its own
+# flag (--allow-plugins, --allow-machine-specific) or an interactive yes
+apply_confirm_for() {
+  case $1 in
+    plugins) ((APPLY_ALLOW_PLUGINS)) || ui_confirm "$2" ;;
+    machine) ((APPLY_ALLOW_MACHINE)) || ui_confirm "$2" ;;
+    *) apply_confirm "$2" ;;
+  esac
+}
+
 # apply_exec CMD... : run each command line (bash -c) in order, stop at the first failure
 apply_exec() {
   local c
@@ -100,10 +114,13 @@ apply_priv_line() {
 
 # ---- stage routing -------------------------------------------------------------------------------------------------
 
-# apply_stage_of CATEGORY TYPE : the stage that applies such an item; empty when none does (#14 adds plugin, config, service)
+# apply_stage_of CATEGORY TYPE : the stage that applies such an item; empty when none does 
 apply_stage_of() {
   case $1:$2 in
     package:pacman | package:aur) echo packages ;;
+    plugin:*) echo plugins ;;
+    config:*) echo config ;;
+    service:*) echo services ;;
     registry-tool:*) echo registry ;;
     repo-tool:*) echo repos ;;
   esac
@@ -294,7 +311,7 @@ apply_peer_host() {
 # apply_plan ITEM_JSON : dispatch on the install type; unknown types are skipped
 apply_plan() {
   local t fn
-  APPLY_CMDS=() APPLY_CODE=0 APPLY_NOTE=""
+  APPLY_CMDS=() APPLY_CODE=0 APPLY_NOTE="" APPLY_CONSENT=""
   t=$(apply_f "$1" .install.type)
   fn=apply_plan_${t//-/_}
   if [[ -n $t ]] && declare -F "$fn" >/dev/null; then "$fn" "$1"; else APPLY_NOTE="no installer for type '$t'"; return 11; fi
@@ -316,7 +333,7 @@ apply_run_items() {
     [[ -n $APPLY_NOTE ]] && printf '    note: %s\n' "$APPLY_NOTE"
     apply_show "${APPLY_CMDS[@]}"
     if ((APPLY_DRY)); then apply_record "$id" planned ""; continue; fi
-    if ! apply_confirm "Run this?"; then apply_record "$id" skipped "not confirmed"; continue; fi
+    if ! apply_confirm_for "$APPLY_CONSENT" "Run this?"; then apply_record "$id" skipped "not confirmed"; continue; fi
     ok=1
     for c in "${APPLY_CMDS[@]}"; do bash -c "$c" || { ok=0; break; }; done
     if ((ok)); then apply_record "$id" installed ""; else apply_record "$id" failed "command failed"; fi
@@ -394,12 +411,17 @@ apply_stage_packages() {
 # ---- driver --------------------------------------------------------------------------------------------------------
 
 APPLY_USAGE='Usage: startkin apply MANIFEST | --from-peer PEER [--dry-run] [--yes] [--only IDS]
+                     [--allow-plugins] [--allow-machine-specific]
   MANIFEST         a manifest file (startkin export --out FILE)
-  --from-peer PEER fetch the manifest from a Tailscale peer (startkin peers)
+  --from-peer PEER fetch the manifest from a Tailscale peer (startkin peers); also the source of config file contents
   --dry-run        show every command; install nothing, ask nothing
-  --yes            pre-approve every "Run this?" prompt (packages, registry tools, source builds, downloads);
+  --yes            pre-approve every "Run this?" prompt (packages, registry tools, source builds, downloads, services);
                    read a --dry-run first
-  --only IDS       comma-separated item ids to apply'
+  --only IDS       comma-separated item ids to apply
+  --allow-plugins  also pre-approve plugin installs (unsandboxed code; --yes alone still asks)
+  --allow-machine-specific
+                   also pre-approve overwriting machine-specific config (monitors, GPU settings); --yes alone still asks
+  Config files are shown as a diff, backed up, and can be undone with: startkin rollback [ID|latest]'
 
 # apply_stage_title NAME : heading shown before a stage
 apply_stage_title() {
@@ -407,6 +429,9 @@ apply_stage_title() {
     packages) echo "Packages (pacman, AUR)" ;;
     registry) echo "Registry tools (cargo, go, npm, uv, pipx, mise)" ;;
     repos) echo "Tools from repos (git builds, release binaries, AppImages, copies)" ;;
+    plugins) echo "Omarchy plugins" ;;
+    config) echo "Config files (diff, backup, rollback)" ;;
+    services) echo "systemd services" ;;
     *) echo "$1" ;;
   esac
 }
@@ -497,17 +522,20 @@ apply_summary() {
   done
   printf '\n'
   ((APPLY_DRY)) && printf '(dry run: nothing was installed)\n'
+  backup_summary
   ! grep -q $'\tfailed\t' "$APPLY_RES"
 }
 
 cmd_apply() {
   local file="" only="" tmp="" rc
-  APPLY_DRY=0 APPLY_YES=0 APPLY_PEER=""
+  APPLY_DRY=0 APPLY_YES=0 APPLY_PEER="" APPLY_ALLOW_PLUGINS=0 APPLY_ALLOW_MACHINE=0
   while (($#)); do
     case $1 in
       -h | --help) echo "$APPLY_USAGE"; return 0 ;;
       --dry-run) APPLY_DRY=1 ;;
       --yes | -y) APPLY_YES=1 ;;
+      --allow-plugins) APPLY_ALLOW_PLUGINS=1 ;;
+      --allow-machine-specific) APPLY_ALLOW_MACHINE=1 ;;
       --from-peer | --only)
         (($# >= 2)) || die -c 2 "apply: $1 needs a value"
         if [[ $1 == --only ]]; then only=$2; else APPLY_PEER=$2; fi
@@ -521,6 +549,7 @@ cmd_apply() {
   [[ -z $file || -z $APPLY_PEER ]] || die -c 2 "apply: give a manifest file or --from-peer, not both"
   require_cmd jq
 
+  backup_reset
   APPLY_RES=$(mktemp) || return 1
   tmp=$(mktemp) || return 1
   if [[ -n $APPLY_PEER ]]; then

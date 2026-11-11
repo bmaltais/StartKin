@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# startkin: dispatcher. Subcommands are scan, adopt, track, export, apply, peers; see `startkin --help` and docs/engine.md.
+# startkin: dispatcher. Subcommands are scan, adopt, track, export, apply, rollback, peers; see `startkin --help` and docs/engine.md.
 set -uo pipefail
 
 STARTKIN_ROOT=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
@@ -28,6 +28,10 @@ source "$STARTKIN_ROOT/lib/drift.sh"
 source "$STARTKIN_ROOT/lib/target.sh"
 # shellcheck source=../lib/apply.sh
 source "$STARTKIN_ROOT/lib/apply.sh"
+# shellcheck source=../lib/backup.sh
+source "$STARTKIN_ROOT/lib/backup.sh"
+# shellcheck source=../lib/apply_more.sh
+source "$STARTKIN_ROOT/lib/apply_more.sh"
 
 usage() {
   cat <<'EOF'
@@ -44,8 +48,10 @@ Commands:
                   Write the manifest to stdout or FILE (mode 600); --from re-exports a saved snapshot
                   (secrets-gated either way, see docs/engine.md)
   apply MANIFEST | --from-peer PEER [--dry-run] [--yes] [--only IDS]
-                  Install a manifest's packages and tools on this machine (--dry-run shows the commands and
-                  runs nothing; see `startkin apply --help`)
+                  Reproduce a manifest on this machine: packages, tools, plugins, config (diff, backup), services
+                  (--dry-run shows the commands and runs nothing; see `startkin apply --help`)
+  rollback [ID|latest] [--yes] [--dry-run] | --list
+                  Undo an apply run: restore the config files it replaced from its backup
   peers [--json] [--no-probe]
                   List Tailscale peers (Linux) and the startkin version each online one runs
   peers fetch PEER
@@ -55,7 +61,7 @@ Options:
   --version       Print the version
   -h, --help      Print this help
 
-Implemented so far: --version, --help, `scan --json`, adopt, track, export, peers, apply (packages and tools).
+Implemented so far: --version, --help, `scan --json`, adopt, track, export, peers, apply (packages, tools, plugins, config, services), rollback.
 EOF
 }
 
@@ -93,6 +99,7 @@ main() {
     peers) shift; require_cmd jq; cmd_peers "$@" ;;
     export) shift; cmd_export "$@" ;;
     apply) shift; cmd_apply "$@" ;;
+    rollback) shift; require_cmd jq; cmd_rollback "$@" ;;
     "") usage >&2; exit 2 ;;
     *) printf 'startkin: unknown command: %s\n\n' "$1" >&2; usage >&2; exit 2 ;;
   esac
