@@ -40,7 +40,7 @@ repo_tools_main_file() {
 
 # repo_tools_item PATH KIND NAME [TRACE_PATH] : print one item as JSON
 repo_tools_item() {
-  local path=$1 kind=$2 name=$3 trace=${4:-$1} where risk target id hint=""
+  local path=$1 kind=$2 name=$3 trace=${4:-$1} where risk target id e hint=""
   prov_trace "$trace" "$name"
   target=$(readlink -f -- "$path" 2>/dev/null || echo "$path")
   [[ $target == *.AppImage ]] && hint="AppImage"
@@ -51,15 +51,10 @@ repo_tools_item() {
   id="repo-tool:${name//[[:space:]]/_}"
   risk=low
   awk -v c="$R_CONF" 'BEGIN {exit !(c < 0.7)}' && risk=medium
-  jq -nc \
-    --arg id "$id" --arg name "$name" --arg kind "$kind" --arg risk "$risk" \
-    --argjson install "$R_INSTALL" --arg version "$R_VERSION" \
-    --arg method "$R_METHOD" --argjson conf "$R_CONF" --arg where "found in $where" \
-    --argjson evid "$(printf '%s\n' "${R_EVID[@]}" | jq -R . | jq -sc 'map(select(. != ""))')" \
-    '{id: $id, name: $name, kind: $kind, category: "repo-tool", risk: $risk, install: $install,
-      version: (if $version == "" then null else $version end),
-      provenance: {method: $method, confidence: $conf, evidence: ([$where] + $evid)},
-      private: false}'
+  local -a evid=()
+  for e in "${R_EVID[@]}"; do [[ -n $e ]] && evid+=("$e"); done
+  item_json "$id" "$name" "$kind" repo-tool "$risk" "$R_INSTALL" "$R_VERSION" "$R_METHOD" "$R_CONF" false \
+    "found in $where" "${evid[@]}"
 }
 
 scan_repo_tools() {

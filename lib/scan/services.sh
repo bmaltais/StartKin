@@ -18,6 +18,13 @@
 # it); a unit file under $HOME is `copy` of that file; anything else is `unknown` with a hint.
 # shellcheck shell=bash
 
+# services_ctl SCOPE ARGS... : systemctl for the system manager (SCOPE system) or the user manager (SCOPE user)
+services_ctl() {
+  local scope=$1
+  shift
+  if [[ $scope == user ]]; then systemctl --user "$@"; else systemctl "$@"; fi
+}
+
 # services_norm : stdin unit names, one per line; append .service when there is no unit-type suffix
 services_norm() {
   awk 'NF { if ($0 ~ /\.(service|socket|timer|path|target|mount)$/) print; else print $0 ".service" }'
@@ -25,7 +32,8 @@ services_norm() {
 
 # services_baseline SCOPE (system|user) : baseline unit names derived from Omarchy's install scripts
 services_baseline() {
-  local scope=$1 dir=${STARTKIN_OMARCHY_DIR:-/usr/share/omarchy}/install
+  local scope=$1 dir
+  dir=$(omarchy_dir)/install
   [[ -d $dir ]] || return 0
   if [[ $scope == system ]]; then
     grep -rhE 'systemctl' "$dir" 2>/dev/null | awk '
@@ -60,56 +68,46 @@ services_is_companion() {
 # services_user_default UNIT : succeed when a preset-enabled user unit is a distro/Omarchy default (see header, rule 1)
 services_user_default() {
   local frag owner pkg
-  frag=$(systemctl --user show -p FragmentPath --value "$1" 2>/dev/null) || return 1
+  frag=$(services_ctl user show -p FragmentPath --value "$1" 2>/dev/null) || return 1
   [[ -n $frag && $frag != "$HOME"/* ]] || return 1
-  owner=$(pacman -Qo "$frag" 2>/dev/null) || return 1
-  pkg=${owner##* is owned by }
-  pkg=${pkg%% *}
+  owner=$(pacman_owner "$frag") || return 1
+  pkg=${owner%% *}
   [[ $pkg == omarchy* ]] && return 0
-  grep -qxF -- "$pkg" "${STARTKIN_OMARCHY_DIR:-/usr/share/omarchy}"/install/*.packages 2>/dev/null && return 0
-  pacman -Qi "$pkg" 2>/dev/null | grep -q '^Install Reason.*dependency'
+  grep -qxF -- "$pkg" "$(omarchy_dir)"/install/*.packages 2>/dev/null && return 0
+  pacman_is_dependency "$pkg"
 }
 
 # services_item SCOPE UNIT : one manifest item for an enabled unit
 services_item() {
-  local scope=$1 unit=$2 frag="" owner="" pkg="" ver="" sysctl=(systemctl)
-  [[ $scope == user ]] && sysctl=(systemctl --user)
-  frag=$("${sysctl[@]}" show -p FragmentPath --value "$unit" 2>/dev/null) || frag=""
-  local risk=medium
+  local scope=$1 unit=$2 frag="" owner="" pkg="" ver="" risk=medium id="service:$1:$2"
+  frag=$(services_ctl "$scope" show -p FragmentPath --value "$unit" 2>/dev/null) || frag=""
   [[ $scope == user ]] && risk=low
 
   if [[ -n $frag && $frag == "$HOME"/* ]]; then
-    jq -n --arg id "service:$scope:$unit" --arg name "$unit" --arg risk "$risk" --arg path "$(tilde_path "$frag")" --arg scope "$scope" '{
-      id: $id, name: $name, kind: "service", category: "service", risk: $risk,
-      install: {type: "copy", path: $path}, version: null,
-      provenance: {method: "adjacent-evidence", confidence: 0.7, evidence: ["enabled " + $scope + " unit", "unit file " + $path]},
-      private: false}'
-  elif [[ -n $frag ]] && owner=$(pacman -Qo "$frag" 2>/dev/null) && [[ $owner == *" is owned by "* ]]; then
-    read -r pkg ver <<<"${owner##* is owned by }"
-    jq -n --arg id "service:$scope:$unit" --arg name "$unit" --arg risk "$risk" --arg pkg "$pkg" --arg ver "$ver" --arg scope "$scope" --arg frag "$(tilde_path "$frag")" '{
-      id: $id, name: $name, kind: "service", category: "service", risk: $risk,
-      install: {type: "pacman", package: $pkg}, version: (if $ver == "" then null else $ver end),
-      provenance: {method: "package-manager", confidence: 0.95, evidence: ["enabled " + $scope + " unit", "owned by " + $pkg + " (" + $frag + ")"]},
-      private: false}'
+    item_json "$id" "$unit" service service "$risk" \
+      "$(jq -nc --arg p "$(tilde_path "$frag")" '{type: "copy", path: $p}')" "" adjacent-evidence 0.7 false \
+      "enabled $scope unit" "unit file $(tilde_path "$frag")"
+  elif [[ -n $frag ]] && owner=$(pacman_owner "$frag"); then
+    read -r pkg ver <<<"$owner"
+    item_json "$id" "$unit" service service "$risk" \
+      "$(jq -nc --arg p "$pkg" '{type: "pacman", package: $p}')" "$ver" package-manager 0.95 false \
+      "enabled $scope unit" "owned by $pkg ($(tilde_path "$frag"))"
   else
-    local hint="systemctl ${sysctl[*]:1} enable $unit"
-    jq -n --arg id "service:$scope:$unit" --arg name "$unit" --arg risk "$risk" --arg hint "${hint//  / }" --arg scope "$scope" --arg frag "$(tilde_path "$frag")" '{
-      id: $id, name: $name, kind: "service", category: "service", risk: $risk,
-      install: {type: "unknown", hint: $hint}, version: null,
-      provenance: {method: "fallback", confidence: 0.3, evidence: (["enabled " + $scope + " unit"] + (if $frag == "" then [] else ["unit file " + $frag] end))},
-      private: false}'
+    local hint="systemctl enable $unit" evidence=("enabled $scope unit")
+    [[ $scope == user ]] && hint="systemctl --user enable $unit"
+    [[ -n $frag ]] && evidence+=("unit file $(tilde_path "$frag")")
+    item_json "$id" "$unit" service service "$risk" \
+      "$(jq -nc --arg h "$hint" '{type: "unknown", hint: $h}')" "" fallback 0.3 false "${evidence[@]}"
   fi
 }
 
 scan_services() {
   command -v systemctl >/dev/null 2>&1 || { warn "systemctl not found, no services scanned"; echo '[]'; return 0; }
-  [[ -d ${STARTKIN_OMARCHY_DIR:-/usr/share/omarchy}/install ]] || warn "Omarchy install scripts not found; service baseline is vendor presets only"
+  [[ -d $(omarchy_dir)/install ]] || warn "Omarchy install scripts not found; service baseline is vendor presets only"
 
-  local scope list base unit preset items=() sysctl
+  local scope list base unit preset items=()
   for scope in system user; do
-    sysctl=(systemctl)
-    [[ $scope == user ]] && sysctl=(systemctl --user)
-    list=$("${sysctl[@]}" list-unit-files --state=enabled --no-legend --type=service,socket,timer,path 2>/dev/null) || {
+    list=$(services_ctl "$scope" list-unit-files --state=enabled --no-legend --type=service,socket,timer,path 2>/dev/null) || {
       warn "could not list $scope units"
       continue
     }
@@ -125,5 +123,5 @@ scan_services() {
       items+=("$(services_item "$scope" "$unit")")
     done <<<"$list"
   done
-  if ((${#items[@]})); then printf '%s\n' "${items[@]}" | jq -s '.'; else echo '[]'; fi
+  items_join "${items[@]}"
 }
