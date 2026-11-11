@@ -186,7 +186,7 @@ apply_copy_item() {
     return 0
   fi
   backup_save "$dest" || { apply_copy_end failed "could not write the backup; nothing changed"; return 0; }
-  mkdir -p -- "$(dirname -- "$dest")"
+  backup_mkdir_p "$(dirname -- "$dest")" || { apply_copy_end failed "could not create the directory; undo with startkin rollback $(backup_id)"; return 0; }
   if [[ -d $stage/f && -d $dest ]]; then
     cp -a -- "$stage/f/." "$dest/" || { apply_copy_end failed "copy failed; undo with startkin rollback $(backup_id)"; return 0; }
   else

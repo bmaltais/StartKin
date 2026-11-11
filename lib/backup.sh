@@ -44,6 +44,32 @@ backup_save() {
   fi
 }
 
+# backup_mkdir_p DIR : mkdir -p DIR, first recording in the set's "dirs" file (one path per line, shallowest first) every
+# directory inside home that does not exist yet, so rollback can rmdir exactly those. Needs backup_save to have run.
+backup_mkdir_p() {
+  local d=$1 missing=() p
+  while [[ $d == "$HOME"/* && ! -e $d && ! -L $d ]]; do
+    missing=("$d" "${missing[@]}")
+    d=$(dirname -- "$d")
+  done
+  if [[ -n $BACKUP_DIR ]]; then
+    for p in "${missing[@]}"; do printf '%s\n' "$p" >>"$BACKUP_DIR/dirs"; done
+  fi
+  mkdir -p -- "$1"
+}
+
+# backup_rmdirs SET : remove the directories apply created, deepest first, with rmdir only: a directory that is not empty
+# (the user added files) or no longer a real directory is left alone. Sets without a dirs file (older ones) do nothing.
+backup_rmdirs() {
+  local dir
+  [[ -f $1/dirs ]] || return 0
+  while IFS= read -r dir; do
+    apply_home_path_ok "$dir" && [[ -d $dir && ! -L $dir ]] || continue
+    rmdir -- "$dir" 2>/dev/null && printf '  rmdir    %s\n' "$(tilde_text "$dir")"
+  done < <(tac "$1/dirs")
+  return 0
+}
+
 # backup_hash PATH : a content hash of a file or directory tree (empty when PATH is missing)
 backup_hash() {
   [[ -e $1 || -L $1 ]] || return 0
@@ -164,6 +190,7 @@ cmd_rollback() {
       rm -rf -- "$dest"
     fi
   done < <(awk '{ print NR "\t" $0 }' "$journal" | tac)
+  backup_rmdirs "$set"
   now_utc >"$set/rolled-back"
   printf 'Rolled back %s.\n' "$id"
 }
