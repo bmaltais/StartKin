@@ -108,6 +108,13 @@ _secrets_placeholder_value() {
   return 1
 }
 
+# _secrets_pathlike VALUE : a relative path such as "libreoffice/4/user/x.xml": has a "/" and at least 60% lowercase
+# letters (random base64 is about 40%). Keeps manifest ids and names from tripping high-entropy.
+_secrets_pathlike() {
+  local lower=${1//[^a-z]/}
+  [[ $1 == */* ]] && ((${#lower} * 10 >= ${#1} * 6))
+}
+
 # _secrets_line_kinds LINE : sets the array _SECRETS_FOUND to the kinds found in LINE
 _secrets_line_kinds() {
   local line=$1 lc=${1,,} rest i v m
@@ -126,7 +133,7 @@ _secrets_line_kinds() {
   rest=$line
   while [[ $rest =~ $_SECRETS_ENTROPY_RE ]]; do
     v=${BASH_REMATCH[1]} m=${BASH_REMATCH[0]}
-    if [[ $v != [/~.]* && ! $v =~ ^[0-9a-fA-F]+$ && $v =~ [0-9] && $v =~ [A-Za-z] ]] &&
+    if [[ $v != [/~.]* && ! $v =~ ^[0-9a-fA-F]+$ && $v =~ [0-9] && $v =~ [A-Za-z] ]] && ! _secrets_pathlike "$v" &&
       awk -v h="$(_secrets_entropy "$v")" -v m="$_SECRETS_ENTROPY_MIN" 'BEGIN { exit !(h >= m) }'; then
       _SECRETS_FOUND+=(high-entropy)
       break

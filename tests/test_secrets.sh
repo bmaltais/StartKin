@@ -100,6 +100,12 @@ test_detects_high_entropy_assignment() {
   assert_eq "high-entropy" "$(kinds_of '"blob": "q8Zx3Lm9Kp2Wv7Rt4Yh1Jb6"')"
 }
 
+test_relative_paths_are_not_high_entropy() {
+  assert_eq "" "$(kinds_of '"name": "libreoffice/4/user/autotext/mytexts.bau"')"
+  assert_eq "" "$(kinds_of '"id": "config:libreoffice/4/user/config/autotbl.fmt"')"
+  assert_eq "high-entropy" "$(kinds_of 'blob = q8Zx3Lm9Kp2/Wv7Rt4Yh1Jb6Qz5Nc')"
+}
+
 test_clean_text_has_no_findings() {
   local line
   # shellcheck disable=SC2016 # literal shell syntax is the test input

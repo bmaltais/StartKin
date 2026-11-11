@@ -103,7 +103,7 @@ test_secret_content_marks_private_and_never_leaks() {
   local tok; tok="ghp_$(printf 'a1B2%.0s' {1..10})"
   put "$H/hypr/secretive.lua" "api_token = \"$tok\""
   local out; out=$(items)
-  assert_json_eq '.[] | select(.id=="config:hypr/secretive.lua") | [.private,.risk,(.provenance.evidence | any(startswith("possible secret: github-token")))]' '[true,"high",true]' "$out"
+  assert_json_eq '.[] | select(.id=="config:hypr/secretive.lua") | [.private,.risk,(.provenance.evidence | any(startswith("content flagged (github-token)")))]' '[true,"high",true]' "$out"
   case $out in *"$tok"*) t_fail "secret leaked into the manifest" ;; esac
 }
 

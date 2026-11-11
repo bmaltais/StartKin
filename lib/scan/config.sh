@@ -41,7 +41,7 @@ config_noise() {
   for part in $rel; do # any path component
     case $part in
       *.bak | *.bak.* | *.bak-* | *.orig | *.rej | *~ | *.swp | .\#* | .git | node_modules | __pycache__) return 0 ;;
-      cache | Cache | CachedData | GPUCache | logs | Logs | "Code Cache" | "Local Storage" | "Session Storage" | IndexedDB | blob_storage | Crashpad | sentry | "Service Worker" | DawnCache | Partitions | leveldb) return 0 ;;
+      *Cache | *Cache_Data | Dictionaries | cache | logs | Logs | "Local Storage" | "Session Storage" | IndexedDB | blob_storage | Crashpad | sentry | "Service Worker" | Partitions | leveldb) return 0 ;;
       *.log | *.log.old | LOG | LOG.old | TransportSecurity | Cookies | Cookies-journal | "Network Persistent State") return 0 ;;
     esac
   done
@@ -113,7 +113,7 @@ config_file_flags() {
   while IFS=$'\t' read -r kind line; do
     [[ -n $kind ]] || continue
     CONFIG_RISK=high CONFIG_PRIVATE=true
-    CONFIG_EVIDENCE+=("possible secret: $kind at line $line")
+    CONFIG_EVIDENCE+=("content flagged ($kind) at line $line")
     warn "$CONFIG_DIR/$rel: $kind at line $line"
   done < <(secrets_scan_file "$f")
   return 0
