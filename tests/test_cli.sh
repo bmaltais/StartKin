@@ -102,6 +102,35 @@ test_scan_json_fails_loudly_when_assembly_fails() {
   assert_eq "" "$T_OUT"
 }
 
+# --- pre-export secrets gate (#28) ------------------------------------------------------------
+
+test_scan_withholds_output_with_a_secret_in_evidence() {
+  mkdir "$T_TMP/s"
+  local tok
+  tok="ghp_$(printf 'Ab1Cd2%.0s' {1..6})"
+  echo "scan_t() { echo '[{\"id\":\"t\",\"provenance\":{\"method\":\"none\",\"confidence\":0,\"evidence\":[\"seen $tok\"]}}]'; }" >"$T_TMP/s/t.sh"
+  STARTKIN_SCAN_DIR=$T_TMP/s assert_status 4 "$BIN" scan --json
+  assert_eq "" "$T_OUT" "nothing on stdout"
+  assert_contains "$T_ERR" "github-token"
+  assert_contains "$T_ERR" "items[0].provenance.evidence[0]"
+  [[ $T_ERR != *"${tok:4:12}"* ]] || t_fail "token echoed on stderr"
+}
+
+test_scan_withholds_output_with_a_denied_copy_path() {
+  mkdir "$T_TMP/s"
+  echo "scan_t() { echo '[{\"id\":\"t\",\"install\":{\"type\":\"copy\",\"path\":\"~/.ssh/id_ed25519\"}}]'; }" >"$T_TMP/s/t.sh"
+  STARTKIN_SCAN_DIR=$T_TMP/s assert_status 4 "$BIN" scan --json
+  assert_eq "" "$T_OUT"
+  assert_contains "$T_ERR" "ssh-key"
+}
+
+test_scan_passes_file_name_derived_ids() {
+  mkdir "$T_TMP/s"
+  echo "scan_t() { echo '[{\"id\":\"launcher:lsw-app-1ff43d2ccb72e5b7.desktop\",\"name\":\"lsw-app-1ff43d2ccb72e5b7.desktop\"}]'; }" >"$T_TMP/s/t.sh"
+  STARTKIN_SCAN_DIR=$T_TMP/s assert_status 0 "$BIN" scan --json
+  assert_json_eq '.items | length' '1' "$T_OUT"
+}
+
 test_scan_probe_is_off_unless_asked() {
   mkdir "$T_TMP/s"
   # shellcheck disable=SC2016 # the scanner body expands when it runs

@@ -41,7 +41,7 @@ _SECRETS_PATH_DENY=(
   'browser-profile:*/.config/chromium/*' 'browser-profile:*/.config/BraveSoftware/*'
   'browser-profile:*/.config/vivaldi*/*' 'browser-profile:*/.config/microsoft-edge*/*'
   'browser-profile:*/.config/opera/*' 'browser-profile:*/.var/app/org.mozilla.firefox/*'
-  'hardware:*/.config/hypr/monitors.conf' 'hardware:*/.config/kanshi/*' 'hardware:/etc/fstab'
+  'hardware:*/.config/hypr/monitors.conf' 'hardware:*/.config/hypr/monitors.lua' 'hardware:*/.config/kanshi/*' 'hardware:/etc/fstab'
   'hardware:/etc/crypttab' 'hardware:/etc/machine-id' 'hardware:/var/lib/dbus/machine-id'
   'hardware:/etc/hostname' 'hardware:/etc/X11/xorg.conf*' 'hardware:/etc/udev/rules.d/*'
   'hardware:/etc/modprobe.d/*' 'hardware:/var/lib/bluetooth/*'
@@ -108,11 +108,25 @@ _secrets_placeholder_value() {
   return 1
 }
 
-# _secrets_pathlike VALUE : a relative path such as "libreoffice/4/user/x.xml": has a "/" and at least 60% lowercase
-# letters (random base64 is about 40%). Keeps manifest ids and names from tripping high-entropy.
+# _secrets_pathlike VALUE : a relative path such as "libreoffice/4/user/x.xml": has a "/", at least 60% lowercase
+# letters (random base64 is about 40%) and no random-looking segment. A segment of 8+ characters that mixes lower
+# case, upper case and digits (between any of / . _ -) is a random token, not a file name, so base64 with slashes cannot hide behind the
+# lowercase share. Keeps manifest ids and names from tripping high-entropy.
 _secrets_pathlike() {
-  local lower=${1//[^a-z]/}
-  [[ $1 == */* ]] && ((${#lower} * 10 >= ${#1} * 6))
+  local lower=${1//[^a-z]/} seg
+  local -a segs
+  [[ $1 == */* ]] && ((${#lower} * 10 >= ${#1} * 6)) || return 1
+  IFS=/._- read -ra segs <<<"$1"
+  for seg in "${segs[@]}"; do
+    ((${#seg} >= 8)) && [[ $seg == *[a-z]* && $seg == *[A-Z]* && $seg == *[0-9]* ]] && return 1
+  done
+  return 0
+}
+
+# _secrets_slug_hex VALUE : readable lowercase words, then a hex id ("lsw-app-1ff43d2ccb72e5b7"). Hex digests are
+# already exempt from high-entropy; a readable prefix does not make one a secret. Ids derived from file names look like this.
+_secrets_slug_hex() {
+  [[ $1 =~ ^[a-z]+([-_][a-z]+)*[-_][0-9a-f]{8,}$ ]]
 }
 
 # _secrets_line_kinds LINE : sets the array _SECRETS_FOUND to the kinds found in LINE
@@ -133,7 +147,7 @@ _secrets_line_kinds() {
   rest=$line
   while [[ $rest =~ $_SECRETS_ENTROPY_RE ]]; do
     v=${BASH_REMATCH[1]} m=${BASH_REMATCH[0]}
-    if [[ $v != [/~.]* && ! $v =~ ^[0-9a-fA-F]+$ && $v =~ [0-9] && $v =~ [A-Za-z] ]] && ! _secrets_pathlike "$v" &&
+    if [[ $v != [/~.]* && ! $v =~ ^[0-9a-fA-F]+$ && $v =~ [0-9] && $v =~ [A-Za-z] ]] && ! _secrets_pathlike "$v" && ! _secrets_slug_hex "$v" &&
       awk -v h="$(_secrets_entropy "$v")" -v m="$_SECRETS_ENTROPY_MIN" 'BEGIN { exit !(h >= m) }'; then
       _SECRETS_FOUND+=(high-entropy)
       break
@@ -152,6 +166,33 @@ secrets_scan_text() {
     _secrets_line_kinds "$line"
     for k in "${_SECRETS_FOUND[@]}"; do printf '%s\t%d\n' "$k" "$n"; found=1; done
   done
+  return "$found"
+}
+
+# secrets_check_manifest FILE : check a manifest (JSON file) the way every export must: each string in it is scanned
+# as the `"key": "value"` line it would be in pretty-printed JSON, and each `copy` install path is checked against the
+# path policy. Prints "KIND<TAB>LOCATION" per finding (LOCATION is a JSON path such as items[3].provenance.evidence[1];
+# never the matched text). Returns 0 clean, 1 findings, 2 when FILE is not readable JSON.
+secrets_check_manifest() {
+  local doc rows loc text k p cat found=0
+  doc=$(<"$1") || return 2
+  rows=$(jq -r '
+    def seg: if type == "number" then "[\(.)]" else "." + . end;
+    . as $root
+    | [paths(strings)][] as $p
+    | ($root | getpath($p)) as $v
+    | [($p | map(seg) | join("") | ltrimstr(".")),
+       (($p | last) as $key | if ($key | type) == "string" then "\($key | @json): \($v | @json)" else ($v | @json) end)]
+    | @tsv' <<<"$doc" 2>/dev/null) || return 2
+  while IFS=$'\t' read -r loc text; do
+    [[ -n $loc ]] || continue
+    _secrets_line_kinds "$text"
+    for k in "${_SECRETS_FOUND[@]}"; do printf '%s\t%s\n' "$k" "$loc"; found=1; done
+  done <<<"$rows"
+  while IFS=$'\t' read -r loc p; do
+    [[ -n $p ]] || continue
+    if cat=$(secrets_path_denied "$p"); then printf 'denied-path-%s\t%s\n' "$cat" "$loc"; found=1; fi
+  done < <(jq -r '.items | to_entries[] | select(.value.install? | type == "object" and .type == "copy") | "items[\(.key)].install.path\t\(.value.install.path // "")"' <<<"$doc" 2>/dev/null)
   return "$found"
 }
 

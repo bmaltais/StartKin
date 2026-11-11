@@ -5,6 +5,9 @@
 
 # scan_collect needs lib/registry.sh (registry_overlay), sourced by bin/startkin.
 
+# shellcheck source=secrets.sh
+source "${STARTKIN_ROOT:?}/lib/secrets.sh"
+
 # scan_dir : directory holding scanner files
 scan_dir() { echo "${STARTKIN_SCAN_DIR:-$STARTKIN_ROOT/lib/scan}"; }
 
@@ -55,18 +58,30 @@ scan_collect() {
 
 # scan_manifest : the full manifest on stdout; returns 3 if any scanner failed (manifest still complete for the rest).
 scan_manifest() {
-  local items rc=0
+  local items manifest findings fc=0 rc=0 n kind loc
   items=$(scan_collect) || rc=$?
   # 1 means collection itself broke (scanner failures are 3): print nothing rather than a partial manifest.
   ((rc == 0 || rc == 3)) || return "$rc"
   # Items go in through a file descriptor: a real machine's manifest is far over the argv size limits.
-  jq -n \
+  manifest=$(jq -n \
     --arg at "$(now_utc)" \
     --slurpfile machine <(machine_json) \
     --slurpfile items <(printf '%s\n' "$items") \
     '{schema_version: "1.0",
       generated_at: $at,
       machine: $machine[0],
-      items: $items[0]}' || return 1
+      items: $items[0]}') || return 1
+  # Pre-export gate (#28, docs/secrets-policy.md): a manifest with a secret pattern or a denied copy path is never
+  # printed. Kind and location go to stderr, never the matched text.
+  findings=$(secrets_check_manifest <(printf '%s\n' "$manifest")) || fc=$?
+  if ((fc)); then
+    n=$(grep -c . <<<"$findings")
+    printf 'startkin: error: scan output withheld: %d secret finding(s) (docs/secrets-policy.md)\n' "$n" >&2
+    while IFS=$'\t' read -r kind loc; do
+      [[ -n $kind ]] && printf 'startkin:   %s at %s\n' "$kind" "$loc" >&2
+    done <<<"$findings"
+    return 4
+  fi
+  printf '%s\n' "$manifest"
   return $rc
 }

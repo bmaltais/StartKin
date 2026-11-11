@@ -32,7 +32,7 @@ test_path_denied_categories() {
     "$HOME/.mozilla/firefox/abc.default/logins.json:browser-profile" \
     "$HOME/.config/google-chrome/Default/Cookies:browser-profile" \
     "$HOME/.config/chromium/Default/Login Data:browser-profile" \
-    "$HOME/.config/hypr/monitors.conf:hardware" "/etc/fstab:hardware" "/etc/machine-id:hardware" \
+    "$HOME/.config/hypr/monitors.conf:hardware" "$HOME/.config/hypr/monitors.lua:hardware" "/etc/fstab:hardware" "/etc/machine-id:hardware" \
     "/var/lib/bluetooth/AA/settings:hardware"; do
     path=${pair%:*} want=${pair##*:}
     got=$(secrets_path_denied "$path") || got="(allowed)"
@@ -42,7 +42,7 @@ test_path_denied_categories() {
 
 test_path_allowed() {
   local p
-  for p in "$HOME/.bashrc" "$HOME/.config/nvim/init.lua" "$HOME/.config/hypr/bindings.conf" \
+  for p in "$HOME/.bashrc" "$HOME/.config/nvim/init.lua" "$HOME/.config/hypr/bindings.conf" "$HOME/.config/hypr/bindings.lua" "$HOME/.config/hypr/input.lua" \
     "$HOME/.ssh/id_ed25519.pub" "$HOME/.ssh/config" "$HOME/proj/.env.example" "$HOME/.gnupg/gpg.conf" \
     "$HOME/.config/omarchy/plugins/x/manifest.json" "/usr/local/bin/tool" "$HOME/.local/bin/script" \
     "$HOME/notes/history-of-rome.md" "$HOME/.config/environment.d/10.conf"; do
@@ -104,6 +104,23 @@ test_relative_paths_are_not_high_entropy() {
   assert_eq "" "$(kinds_of '"name": "libreoffice/4/user/autotext/mytexts.bau"')"
   assert_eq "" "$(kinds_of '"id": "config:libreoffice/4/user/config/autotbl.fmt"')"
   assert_eq "high-entropy" "$(kinds_of 'blob = q8Zx3Lm9Kp2/Wv7Rt4Yh1Jb6Qz5Nc')"
+}
+
+test_readable_id_with_hex_suffix_is_not_high_entropy() {
+  # ids derived from file names (launcher:lsw-app-<hex>.desktop) are identifiers, not secret assignments
+  assert_eq "" "$(kinds_of '"id": "launcher:lsw-app-1ff43d2ccb72e5b7.desktop"')"
+  assert_eq "" "$(kinds_of '"name": "lsw-app-fe449ccef03b10c6.desktop"')"
+  # ...but a random tail, or a readable prefix on a random value, is still caught
+  assert_eq "high-entropy" "$(kinds_of 'blob = prod-q8Zx3Lm9Kp2Wv7Rt4Yh1Jb6')"
+  assert_eq "high-entropy" "$(kinds_of 'blob = lsw-app-q8Zx3Lm9Kp2Wv7Rt4Yh1Jb6')"
+}
+
+test_random_base64_with_slashes_is_not_a_path() {
+  # lowercase-heavy enough for the 60% rule, but a segment is a random mix of case and digits
+  assert_eq "high-entropy" "$(kinds_of 'blob = abcdefghij/kQ8zXm3Lp9wRt2YhJb')"
+  assert_eq "high-entropy" "$(kinds_of 'key: mnbvcxzlkjhgfdsa/Qw8Er3Ty6Ui1Op5')"
+  assert_eq "" "$(kinds_of '"name": "BraveSoftware/Brave-Browser/Default/Preferences"')"
+  assert_eq "" "$(kinds_of '"id": "config:fcitx5/conf/cached_layouts"')"
 }
 
 test_clean_text_has_no_findings() {

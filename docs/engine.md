@@ -23,7 +23,7 @@ The dispatcher auto-discovers every `lib/scan/*.sh` (sorted by file name). To ad
 2. The function prints a JSON array of items on stdout and nothing else on stdout. Diagnostics go to stderr (`warn`, `log` from `lib/common.sh` are available).
 3. Item shape is defined by `schema/manifest.schema.json` and `docs/manifest.md`. An empty result is `[]`.
 4. Each scanner runs in its own subshell, with `lib/common.sh` helpers loaded and `STARTKIN_ROOT` set. Do not rely on state from other scanners. The file is sourced, so it must not run anything at top level.
-5. Failure: exit non-zero, a missing function, or output that is not a JSON array. The dispatcher warns on stderr, skips that scanner, still prints the manifest with the other scanners' items, and exits 3.
+5. Failure: exit non-zero, a missing function, or output that is not a JSON array. The dispatcher warns on stderr, skips that scanner, still prints the manifest with the other scanners' items, and exits 3. Before printing, the manifest goes through the secrets gate (`docs/secrets-policy.md`, rule 4): on a finding nothing is printed to stdout and the exit code is 4.
 
 `STARTKIN_SCAN_DIR` overrides the scanner directory (used by tests).
 

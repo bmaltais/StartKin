@@ -126,9 +126,10 @@ test_machine_specific_files_are_high_and_private() {
   put "$H/hypr/fine.lua" 'gaps = 1'
   local out; out=$(items)
   local id
-  for id in monitors gpu paths names; do
+  for id in gpu paths names; do
     assert_json_eq ".[] | select(.id==\"config:hypr/$id.lua\") | [.risk,.private,(.provenance.evidence | any(startswith(\"machine-specific\")))]" '["high",true,true]' "$out"
   done
+  assert_json_eq 'map(select(.id == "config:hypr/monitors.lua")) | length' 0 "$out" "monitors.lua is hardware-denied, never emitted"
   assert_json_eq '.[] | select(.id=="config:hypr/fine.lua") | [.risk,.private]' '["low",false]' "$out"
 }
 

@@ -7,8 +7,8 @@ What StartKin never exports or applies by default, and the checks that enforce i
 1. Secret categories (`ssh-key`, `gnupg`, `keyring`, `token`, `credentials`, `shell-history`, `browser-profile`) are never exported or applied. There is no override. A user who wants such a file on another machine moves it by hand.
 2. `hardware` is machine-specific, not secret. It is skipped by default; a caller may lift it for a same-hardware target with `STARTKIN_SECRETS_ALLOW_HARDWARE=1`. No other category is affected by that variable.
 3. Shell history is never exported as contents. It may be read locally as provenance evidence (`design.md`), but only the derived fact ("seen installing X") goes in a manifest, never the command lines.
-4. A manifest must contain no secret pattern anywhere, evidence strings included. `scripts/check-manifest-secrets` runs before any export and in `./check` over the example manifests.
-5. Nothing prints a matched secret: not stdout, stderr, logs, nor error messages. Findings are a kind plus a line number.
+4. A manifest must contain no secret pattern anywhere, evidence strings included. `scripts/check-manifest-secrets` runs before any export and in `./check` over the example manifests. `startkin scan --json` runs the same check (`secrets_check_manifest` in `lib/secrets.sh`) over its own output before printing: on a finding it prints nothing on stdout, lists each finding's kind and JSON location (for example `api-key at items[3].provenance.evidence[1]`) on stderr, and exits 4. Identifiers derived from file names (`launcher:lsw-app-<hex>.desktop`: readable words then a hex id) and relative paths without a random-looking segment are not secret assignments.
+5. Nothing prints a matched secret: not stdout, stderr, logs, nor error messages. Findings are a kind plus a line number or JSON location.
 6. The scanners are a safety net, not a guarantee. Patterns miss things; the path policy and "never put file contents in a manifest" (`manifest.md`: evidence is never secrets or file contents) are the primary defence.
 
 ## Path categories
@@ -24,7 +24,7 @@ What StartKin never exports or applies by default, and the checks that enforce i
 | `credentials` | `~/.aws/*`, `~/.azure/*`, gcloud, `~/.kube/config`, `credentials`, `client_secret*.json`, NetworkManager `system-connections/*` (Wi-Fi keys), `/etc/wireguard/*`, `/etc/shadow` |
 | `shell-history` | `*_history`, `.histfile`, `.lesshst`, `.viminfo`, atuin, mcfly, zsh sessions |
 | `browser-profile` | Firefox/LibreWolf/Zen, Chrome/Chromium, Brave, Vivaldi, Edge, Opera profiles |
-| `hardware` | `hypr/monitors.conf`, kanshi, `/etc/fstab`, `/etc/crypttab`, `/etc/machine-id`, `/etc/hostname`, xorg.conf, udev rules, modprobe.d, `/var/lib/bluetooth/*` |
+| `hardware` | `hypr/monitors.conf`, `hypr/monitors.lua`, kanshi, `/etc/fstab`, `/etc/crypttab`, `/etc/machine-id`, `/etc/hostname`, xorg.conf, udev rules, modprobe.d, `/var/lib/bluetooth/*` |
 
 Allowlist (checked first, matched against the path itself): `*.pub`, `*.example`, `*.sample`, `*.template`, `~/.ssh/config`, `~/.gnupg/gpg.conf`, `gpg-agent.conf`, `dirmngr.conf`. These hold no private material. Anything else under a denied directory stays denied.
 
