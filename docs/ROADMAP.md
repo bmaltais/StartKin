@@ -31,7 +31,8 @@ PR #30 is ready for review. Next: M2 (#11-#15, #29), plus refactor issue #31.
 
 ## Known follow-ups
 - Package scanner emits system leftovers (`linux`, `intel-ucode`, `mkinitcpio`...) and only `library`/`other` kinds: fix in M3 tagging.
-- Overlap between scanners (`pacman:rust` vs `mise:rust`, `uv`, launchers vs packages): reconcile in apply/export (#11, #13).
+- Overlap between scanners (`pacman:rust` vs `mise:rust`, `uv`, launchers vs packages): export (#11) passes items through unchanged; reconcile in apply (#13).
+- `export_gate_snapshot` (lib/export.sh) duplicates the finding-report loop in `scan_manifest`; fold into one helper in #31.
 - libvirt sockets should group into one item; app-generated launchers (Docker, claude-code-url-handler) are noise.
 - `omadisplaylink` plugin origin is a local path, not cloneable elsewhere.
 - Schema validator needs `uvx`, `check-jsonschema` or python `jsonschema`; first uvx run needs network.
