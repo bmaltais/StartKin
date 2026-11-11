@@ -7,14 +7,9 @@ machine_hostname() { hostname 2>/dev/null || uname -n; }
 
 # Omarchy version from pacman (package "omarchy", or "omarchy-dev" on dev installs); empty when not installed.
 machine_omarchy_version() {
-  local pkg out
-  for pkg in omarchy omarchy-dev; do
-    if out=$(pacman -Q "$pkg" 2>/dev/null); then
-      echo "${out#* }"
-      return 0
-    fi
-  done
-  return 0
+  local out
+  out=$(pacman_omarchy_version)
+  [[ -z $out ]] || echo "${out#* }"
 }
 
 machine_arch() { uname -m; }

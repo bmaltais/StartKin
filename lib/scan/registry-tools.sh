@@ -7,16 +7,14 @@
 # Columns: install value (crate/package/module/tool), version, display name, kind, mise backend. Empty = default.
 rt_items() {
   jq -R -s -c --arg mgr "$1" --arg field "$2" --arg ev "$3" \
-    --argjson conf "${4:-0.95}" --arg method "${5:-registry}" '
+    --argjson conf "${4:-0.95}" --arg method "${5:-registry}" "$ITEM_JQ_DEF"'
     split("\n") | map(select(length > 0) | split("\t")) | map(
       {value: .[0], version: (.[1] // ""), backend: (.[4] // ""),
        name: (if (.[2] // "") == "" then .[0] else .[2] end),
        kind: (if (.[3] // "") == "" then "cli" else .[3] end)}
-      | {id: ($mgr + ":" + .value), name, kind, category: "registry-tool", risk: "low",
-         install: ({type: $mgr} + {($field): .value} + (if .backend != "" then {backend: .backend} else {} end)),
-         version: (if .version == "" then null else .version end),
-         provenance: {method: $method, confidence: $conf, evidence: [$ev]},
-         private: false})'
+      | mkitem($mgr + ":" + .value; .name; .kind; "registry-tool"; "low";
+               {type: $mgr} + {($field): .value} + (if .backend != "" then {backend: .backend} else {} end);
+               .version; $method; $conf; false; [$ev]))'
 }
 
 # rt_run TOOL ARGS... : run TOOL if installed; on failure warn and print nothing. stdout is the tool's output.

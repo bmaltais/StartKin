@@ -78,15 +78,10 @@ config_state() {
 config_item() {
   local rel=$1 status=$2 risk=$3 private=$4
   shift 4
-  jq -nc --arg rel "$rel" --arg path "$(tilde_path "$CONFIG_DIR/$rel")" --arg cat "$(config_category "$rel")" --arg status "$status" \
-    --arg risk "$risk" --argjson private "$private" --args '{
-      id: ("config:" + ($rel | gsub("\\s"; "_"))), name: $rel, kind: "config", category: "config", risk: $risk,
-      install: {type: "copy", path: $path, dest: ("~/.config/" + $rel)},
-      version: null,
-      provenance: {method: "adjacent-evidence", confidence: 0.9,
-                   evidence: (["category: " + $cat, "status: " + $status] + $ARGS.positional)},
-      private: $private
-    }' "$@"
+  local install
+  install=$(jq -nc --arg path "$(tilde_path "$CONFIG_DIR/$rel")" --arg rel "$rel" '{type: "copy", path: $path, dest: ("~/.config/" + $rel)}')
+  item_json "config:${rel//[[:space:]]/_}" "$rel" config config "$risk" "$install" "" adjacent-evidence 0.9 "$private" \
+    "category: $(config_category "$rel")" "status: $status" "$@"
 }
 
 # config_file_flags FILE REL : set CONFIG_RISK, CONFIG_PRIVATE, CONFIG_EVIDENCE (array) for a file that passed the path policy
@@ -227,7 +222,8 @@ config_walk() {
 
 scan_config() {
   local CONFIG_DIR=$HOME/.config
-  local CONFIG_OMARCHY=${STARTKIN_OMARCHY_DIR:-/usr/share/omarchy}
+  local CONFIG_OMARCHY
+  CONFIG_OMARCHY=$(omarchy_dir)
   local CONFIG_BASES=("${STARTKIN_SKEL_DIR:-/etc/skel}/.config" "$CONFIG_OMARCHY/config")
   local CONFIG_RISK CONFIG_PRIVATE CONFIG_EVIDENCE=()
   [[ -d $CONFIG_DIR ]] || { echo '[]'; return 0; }
