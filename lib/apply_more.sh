@@ -11,8 +11,10 @@ source "$STARTKIN_ROOT/lib/secrets.sh"
 
 apply_plugins_dir() { echo "${STARTKIN_PLUGINS_DIR:-$HOME/.config/omarchy/plugins}"; }
 
-# apply_plan_plugin ITEM_JSON : `omarchy plugin add URL --yes [--enable]` (docs/omarchy-plugins.md). Plugins are unsandboxed
-# code, so the URL is shown and each install needs its own consent (--allow-plugins), not just --yes.
+# apply_plan_plugin ITEM_JSON : `omarchy plugin add URL --yes`, then `git checkout REV` when a rev was recorded, then
+# `omarchy plugin enable ID` when it was enabled on the source. Enabling comes last so unpinned code never runs: a failed
+# checkout stops the chain (the item is `failed`) and the plugin stays installed but disabled. Plugins are unsandboxed code
+# (docs/omarchy-plugins.md section 5), so the URL is shown and each install needs its own consent (--allow-plugins).
 apply_plan_plugin() {
   local id src rev a dir
   id=$(apply_f "$1" .install.plugin_id) src=$(apply_f "$1" .install.source)
@@ -22,7 +24,6 @@ apply_plan_plugin() {
   if [[ -e $dir ]]; then APPLY_NOTE="plugin folder exists"; return 10; fi
   command -v "$(apply_omarchy)" >/dev/null 2>&1 || { APPLY_NOTE="omarchy not found on PATH"; return 11; }
   a=("$(apply_omarchy)" plugin add "$src" --yes)
-  if jq -e '.provenance.evidence // [] | index("enabled in shell.json")' <<<"$1" >/dev/null; then a+=(--enable); fi
   APPLY_CODE=1 APPLY_CONSENT=plugins
   APPLY_CMDS=("$(apply_q "${a[@]}")")
   rev=$(jq -r '.provenance.evidence // [] | map(select(startswith("rev "))) | first // "" | ltrimstr("rev ")' <<<"$1")
@@ -30,6 +31,9 @@ apply_plan_plugin() {
     APPLY_CMDS+=("$(apply_q git -C "$dir" checkout "$rev")")
   else
     APPLY_NOTE="no revision recorded: installs the default branch"
+  fi
+  if jq -e '.provenance.evidence // [] | index("enabled in shell.json")' <<<"$1" >/dev/null; then
+    APPLY_CMDS+=("$(apply_q "$(apply_omarchy)" plugin enable "$id")")
   fi
   APPLY_NOTE+="${APPLY_NOTE:+; }needs the Omarchy shell running"
 }
@@ -40,7 +44,7 @@ apply_stage_plugins() {
   while IFS= read -r -u 4 item; do
     case $(apply_f "$item" .install.type) in
       copy)
-        apply_copy_item "$item" "$(apply_plugins_dir)"
+        apply_copy_item "$item" "$(apply_plugins_dir)" plugins
         apply_record "$(apply_f "$item" .id)" "$APPLY_COPY_RESULT" "$APPLY_COPY_DETAIL"
         ;;
       *) apply_run_items "[$item]" ;;
@@ -100,17 +104,18 @@ apply_machine_reasons() {
   return 0
 }
 
-# apply_copy_item ITEM_JSON ROOT : apply one `copy` item whose destination must be inside ROOT; sets APPLY_COPY_RESULT.
+# apply_copy_item ITEM_JSON ROOT [CLASS] : apply one `copy` item whose destination must be inside ROOT; sets APPLY_COPY_RESULT.
+# CLASS is a consent class --yes does not cover (plugins, units; see apply_confirm_for), added to machine when that applies.
 # Flow: validate, policy checks, fetch from the peer, secrets check, diff, consent, backup, install.
 apply_copy_item() {
-  local item=$1 root=$2 id src dest rel host stage cat="" machine=0 why=() flagged r found preview=1
+  local item=$1 root=$2 class=${3:-} id src dest rel host stage cat="" machine=0 why=() flagged r found preview=1
   id=$(apply_f "$item" .id)
   src=$(apply_f "$item" .install.path) dest=$(apply_f "$item" '.install.dest // .install.path')
   [[ $src == "$APPLY_TILDE/"* ]] || { apply_copy_end skipped "source path is not under the source home"; return 0; }
   rel=${src#"$APPLY_TILDE/"}
   apply_relpath_ok "$rel" || { apply_copy_end skipped "invalid path in manifest"; return 0; }
   dest=$(apply_path "$dest")
-  if ! apply_home_path_ok "$dest" || [[ $dest != "$root"/* ]]; then
+  if ! apply_home_path_ok "$dest" || [[ $dest != "$root"/* ]] || ! apply_resolved_under "$dest" "$root"; then
     apply_copy_end skipped "destination must be inside $(tilde_text "$root")/"
     return 0
   fi
@@ -174,7 +179,8 @@ apply_copy_item() {
     machine=1
   fi
 
-  if ! apply_confirm_for "$([[ $machine == 1 ]] && echo machine)" "Install this?"; then
+  ((machine)) && class+="${class:+ }machine"
+  if ! apply_confirm_for "$class" "Install this?"; then
     apply_copy_end skipped "not confirmed"
     return 0
   fi
@@ -185,6 +191,7 @@ apply_copy_item() {
   else
     cp -a -- "$stage/f" "$dest" || { apply_copy_end failed "copy failed; undo with startkin rollback $(backup_id)"; return 0; }
   fi
+  backup_note_after "$dest"
   apply_copy_end installed
 }
 
@@ -246,7 +253,7 @@ apply_stage_services() {
         ;;
       copy)
         if [[ $scope != user ]]; then apply_record "$id" skipped "only user unit files are copied"; continue; fi
-        apply_copy_item "$item" "$HOME/.config/systemd/user"
+        apply_copy_item "$item" "$HOME/.config/systemd/user" units
         case $APPLY_COPY_RESULT in
           installed) reload=1 ;;
           present | planned) ;;
@@ -271,7 +278,7 @@ apply_stage_services() {
     printf '  %s%s\n' "$id" "$([[ $type == copy ]] && echo ' [runs a unit file from another machine]')"
     for c in "${cmds[@]}"; do apply_show "$([[ $scope == system ]] && apply_priv_line "$c" || echo "$c")"; done
     if ((APPLY_DRY)); then apply_record "$id" planned ""; continue; fi
-    if ! apply_confirm "Run this?"; then apply_record "$id" skipped "not confirmed"; continue; fi
+    if ! apply_confirm_for "$([[ $type == copy ]] && echo units)" "Run this?"; then apply_record "$id" skipped "not confirmed"; continue; fi
     for c in "${cmds[@]}"; do
       if [[ $scope == system ]]; then apply_priv_exec "$c" || true; else bash -c "$c" || true; fi
     done

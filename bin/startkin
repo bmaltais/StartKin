@@ -48,12 +48,14 @@ Commands:
                   Write the manifest to stdout or FILE (mode 600); --from re-exports a saved snapshot
                   (secrets-gated either way, see docs/engine.md)
   apply MANIFEST | --from-peer PEER [--dry-run] [--yes] [--only IDS]
+        [--allow-plugins] [--allow-machine-specific] [--allow-units] [--allow-unpinned]
                   Reproduce a manifest on this machine: packages, tools, plugins, config (diff, backup), services
-                  (--dry-run shows the commands and runs nothing; see `startkin apply --help`)
+                  (--dry-run shows the commands and runs nothing; --yes does not cover plugins, machine-specific
+                  files, unit files or unpinned builds, the --allow-* flags do; see `startkin apply --help`)
   rollback [ID|latest] [--yes] [--dry-run] | --list
                   Undo an apply run: restore the config files it replaced from its backup
   peers [--json] [--no-probe]
-                  List Tailscale peers (Linux) and the startkin version each online one runs
+                  List Tailscale peers (Linux hosts; Omarchy is not detected) and the startkin version each online one runs
   peers fetch PEER
                   Print PEER's manifest (runs `startkin scan --json` over SSH)
 

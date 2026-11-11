@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Target-awareness: which manifest items cannot work on this machine (docs/engine.md "Target awareness").
 # Pure comparison of a manifest against a target machine JSON; apply (#13/#14) and the UI consume the result.
-# Needs jq and lib/drift.sh. Does not touch the network or the filesystem beyond the manifest file.
+# Needs jq and lib/drift.sh. Does not touch the network; machine_libc runs ldd, the checks read the manifest file only.
 # shellcheck shell=bash
 
 # machine_libc : glibc | musl | empty when ldd is missing. musl's ldd prints "musl libc" (and exits 1).
@@ -87,6 +87,7 @@ target_check_manifest() {
 
 # target_filter_manifest MANIFEST_FILE TARGET_MACHINE_JSON
 # Prints the manifest with incompatible items removed (warn items stay; consult target_check_manifest for the flags).
+# apply does its own filtering (it reports each skipped item); this is the library entry point for other consumers (the UI).
 target_filter_manifest() {
   local checks
   checks=$(target_check_manifest "$1" "$2") || return 1

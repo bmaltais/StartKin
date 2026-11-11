@@ -125,6 +125,37 @@ test_registry_tool_already_installed_is_skipped() {
   assert_eq "" "$(only_calls 'install --version')"
 }
 
+test_crate_name_is_matched_literally_in_the_installed_list() {
+  setup; answer y
+  stub cargo 'echo "cargo $*" >>"$CALLS"; [[ $1 == install && $2 == --list ]] && echo "axb v1.0.0:"; exit 0'
+  mf "$(it cargo:a.b registry-tool cli '{"type":"cargo","crate":"a.b"}' 1.0.0)"
+  assert_status 0 run_apply "$T_TMP/m.json"
+  assert_contains "$(calls)" "cargo install --version 1.0.0 a.b"
+}
+
+test_unpinned_git_build_and_unverified_download_need_allow_unpinned() {
+  setup; answer ""
+  stub git 'echo "git $*" >>"$CALLS"; if [[ $1 == clone ]]; then mkdir -p "${@: -1}"; fi'
+  stub curl 'echo "curl $*" >>"$CALLS"; while [[ $1 != -o ]]; do shift; done; printf x >"$2"'
+  mf "$(it t1 repo-tool cli '{"type":"git-build","url":"https://example.com/o/t1.git","build":["true"]}')" \
+    "$(it rb:a repo-tool cli '{"type":"release-binary","url":"https://example.com/a"}')"
+  assert_status 0 run_apply "$T_TMP/m.json" --yes
+  assert_eq "" "$(only_calls 'git clone')"
+  assert_eq "" "$(only_calls curl)"
+  assert_contains "$T_OUT" "not confirmed"
+  assert_status 0 run_apply "$T_TMP/m.json" --yes --allow-unpinned
+  assert_contains "$(calls)" "git clone"
+  assert_contains "$(calls)" "curl"
+}
+
+test_pinned_items_still_run_on_plain_yes() {
+  setup; answer ""
+  stub git 'echo "git $*" >>"$CALLS"; if [[ $1 == clone ]]; then mkdir -p "${@: -1}"; fi'
+  mf "$(it t1 repo-tool cli '{"type":"git-build","url":"https://example.com/o/t1.git","ref":"v1","build":["true"]}')"
+  assert_status 0 run_apply "$T_TMP/m.json" --yes
+  assert_contains "$(calls)" "git clone"
+}
+
 test_registry_tool_needs_confirmation_per_item() {
   setup; answer n
   mf "$(it npm:left registry-tool cli '{"type":"npm","package":"left"}' 2.0.0)"

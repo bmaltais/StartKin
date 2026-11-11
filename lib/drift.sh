@@ -23,7 +23,7 @@ drift_warn() {
   case $(drift_compare_versions "$s" "$t") in
     same) ;;
     unknown) warn "Omarchy version unknown (source: ${s:-unknown}, target: ${t:-unknown}); cannot tell whether defaults differ" ;;
-    source-older) warn "manifest is from Omarchy $s, this machine runs $t: items may have become part of Omarchy defaults and will be treated as already satisfied" ;;
+    source-older) warn "manifest is from Omarchy $s, this machine runs $t: items may have become part of Omarchy defaults; packages already installed here are reported as present" ;;
     source-newer) warn "manifest is from Omarchy $s, newer than this machine's $t: items may need things this version lacks" ;;
   esac
   return 0

@@ -18,7 +18,8 @@ peers_ssh() {
   return "$rc"
 }
 
-# peers_table : peers as a JSON array [{name, host, online}], Linux only (Omarchy is Linux), sorted by name.
+# peers_table : peers as a JSON array [{name, host, online}], Linux peers only, sorted by name. Omarchy itself is not
+# detected (Tailscale does not know it): a peer counts as usable when `startkin --version` answers over SSH.
 # host is the MagicDNS name without the trailing dot, else the first Tailscale IP.
 peers_table() {
   local ts=${STARTKIN_TAILSCALE:-tailscale} out efile
@@ -88,6 +89,7 @@ peers_fetch() {
   peers_ssh "$host" "${STARTKIN_REMOTE_CMD:-startkin} --version"
   rc=$?
   ((rc == 0)) || peers_classify "$name" "$rc"
+  [[ $PEERS_OUT == startkin\ * ]] || die -c 14 "$name: not a startkin engine (--version printed: ${PEERS_OUT:-nothing})"
   remote_v=${PEERS_OUT#startkin }
   local_v=$(version)
   if [[ ${remote_v%%.*} != "${local_v%%.*}" ]]; then
