@@ -25,11 +25,8 @@ test_unknown_command() {
 }
 
 test_stubs_not_implemented() {
-  local c
-  for c in export apply peers scan; do
-    assert_status 2 "$BIN" "$c"
-    assert_contains "$T_ERR" "not implemented"
-  done
+  assert_status 2 "$BIN" scan
+  assert_contains "$T_ERR" "not implemented"
 }
 
 test_scan_json_skeleton() {

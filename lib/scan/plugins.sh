@@ -96,16 +96,9 @@ scan_plugins() {
       [[ -n $n ]] && evidence+=("bin link: $n")
     done < <(jq -r --arg id "$id" '.[] | select(.plugin_id == $id) | .name' <<<"$links")
 
-    items+=("$(jq -nc \
-      --arg id "$id" --arg name "${name:-$id}" --arg version "$version" \
-      --slurpfile install <(printf '%s\n' "$install") --arg method "$method" --argjson conf "$conf" \
-      --slurpfile evidence <(printf '%s\n' "${evidence[@]}" | jq -R . | jq -sc .) \
-      '{id: ("plugin:" + $id), name: $name, kind: "plugin", category: "plugin",
-        risk: "high", install: $install[0],
-        version: (if $version == "" then null else $version end),
-        provenance: {method: $method, confidence: $conf, evidence: $evidence[0]},
-        private: false}')")
+    items+=("$(item_json "plugin:$id" "${name:-$id}" plugin plugin high "$install" "$version" "$method" "$conf" false \
+      "${evidence[@]}")")
   done < <(plugin_dirs)
 
-  if ((${#items[@]})); then printf '%s\n' "${items[@]}" | jq -sc 'sort_by(.id)'; else echo '[]'; fi
+  items_join "${items[@]}" | jq -c 'sort_by(.id)'
 }

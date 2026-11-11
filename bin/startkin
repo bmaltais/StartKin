@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# startkin: dispatcher. Subcommands are scan, adopt, track, export, apply, peers; see `startkin --help` and docs/engine.md.
+# startkin: dispatcher. Subcommands are scan, adopt, track, export, apply, rollback, peers; see `startkin --help` and docs/engine.md.
 set -uo pipefail
 
 STARTKIN_ROOT=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
@@ -18,6 +18,20 @@ source "$STARTKIN_ROOT/lib/ui.sh"
 source "$STARTKIN_ROOT/lib/adopt.sh"
 # shellcheck source=../lib/track.sh
 source "$STARTKIN_ROOT/lib/track.sh"
+# shellcheck source=../lib/peers.sh
+source "$STARTKIN_ROOT/lib/peers.sh"
+# shellcheck source=../lib/export.sh
+source "$STARTKIN_ROOT/lib/export.sh"
+# shellcheck source=../lib/drift.sh
+source "$STARTKIN_ROOT/lib/drift.sh"
+# shellcheck source=../lib/target.sh
+source "$STARTKIN_ROOT/lib/target.sh"
+# shellcheck source=../lib/apply.sh
+source "$STARTKIN_ROOT/lib/apply.sh"
+# shellcheck source=../lib/backup.sh
+source "$STARTKIN_ROOT/lib/backup.sh"
+# shellcheck source=../lib/apply_more.sh
+source "$STARTKIN_ROOT/lib/apply_more.sh"
 
 usage() {
   cat <<'EOF'
@@ -30,15 +44,26 @@ Commands:
                   --probe: also run unowned CLI binaries with --version/--help, off by default)
   adopt           Confirm where untraced items came from (see docs/adopt.md)
   track install  Run an install and record its source, version and date
-  export          Turn a manifest into a profile / install plan
-  apply           Reproduce a manifest on this machine
-  peers           List Tailscale peers that can share a manifest
+  export [--out FILE] [--from SNAPSHOT]
+                  Write the manifest to stdout or FILE (mode 600); --from re-exports a saved snapshot
+                  (secrets-gated either way, see docs/engine.md)
+  apply MANIFEST | --from-peer PEER [--dry-run] [--yes] [--only IDS]
+        [--allow-plugins] [--allow-machine-specific] [--allow-units] [--allow-unpinned]
+                  Reproduce a manifest on this machine: packages, tools, plugins, config (diff, backup), services
+                  (--dry-run shows the commands and runs nothing; --yes does not cover plugins, machine-specific
+                  files, unit files or unpinned builds, the --allow-* flags do; see `startkin apply --help`)
+  rollback [ID|latest] [--yes] [--dry-run] | --list
+                  Undo an apply run: restore the config files it replaced from its backup
+  peers [--json] [--no-probe]
+                  List Tailscale peers (Linux hosts; Omarchy is not detected) and the startkin version each online one runs
+  peers fetch PEER
+                  Print PEER's manifest (runs `startkin scan --json` over SSH)
 
 Options:
   --version       Print the version
   -h, --help      Print this help
 
-Implemented so far: --version, --help, `scan --json`, adopt, track.
+Implemented so far: --version, --help, `scan --json`, adopt, track, export, peers, apply (packages, tools, plugins, config, services), rollback.
 EOF
 }
 
@@ -73,7 +98,10 @@ main() {
     scan) shift; cmd_scan "$@" ;;
     adopt) shift; cmd_adopt "$@" ;;
     track) shift; cmd_track "$@" ;;
-    export | apply | peers) not_implemented "$1" ;;
+    peers) shift; require_cmd jq; cmd_peers "$@" ;;
+    export) shift; cmd_export "$@" ;;
+    apply) shift; cmd_apply "$@" ;;
+    rollback) shift; require_cmd jq; cmd_rollback "$@" ;;
     "") usage >&2; exit 2 ;;
     *) printf 'startkin: unknown command: %s\n\n' "$1" >&2; usage >&2; exit 2 ;;
   esac

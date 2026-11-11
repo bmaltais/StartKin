@@ -18,10 +18,10 @@ Source of truth for scope is the GitHub issues and milestones; this file records
 - M3 tags the items scanners emit. M4 is a thin front-end over the CLI's JSON. M5 is optional and layered on top.
 
 ## Status (update below)
-Integration branch: `integration/m1-scanner`, draft PR #30 (closes the M1 tickets).
+M1 merged to main via PR #30. Integration branch for M2: `integration/m2-transport-apply`, PR #32 (closes #11-#15, #29, #31).
 
-Merged into the integration branch: #1-#10 and #28 (all of M1), plus the code-review fix pass (streaming scan output, `~`-relative paths, read-only scanning by default, pre-export secrets gate, `scan --report`).
-PR #30 is ready for review. Next: M2 (#11-#15, #29), plus refactor issue #31.
+M2 merged into the integration branch: #11 export, #12 peers, #13/#14 apply + rollback, #15 target checks, #29 version drift, #31 refactor (result globals and renames still open), plus a code-review fix pass (consent flags --allow-plugins/--allow-units/--allow-unpinned/--allow-machine-specific, safer rollback, symlink-safe paths).
+Next: M3 (profiles and tags). Unverified: nothing run on a real second machine or against real installers/tailnet.
 
 ## Decisions
 - Engine is bash + jq; scanners are `lib/scan/<name>.sh` defining `scan_<name>` (docs/engine.md).
@@ -31,7 +31,8 @@ PR #30 is ready for review. Next: M2 (#11-#15, #29), plus refactor issue #31.
 
 ## Known follow-ups
 - Package scanner emits system leftovers (`linux`, `intel-ucode`, `mkinitcpio`...) and only `library`/`other` kinds: fix in M3 tagging.
-- Overlap between scanners (`pacman:rust` vs `mise:rust`, `uv`, launchers vs packages): reconcile in apply/export (#11, #13).
+- Overlap between scanners (`pacman:rust` vs `mise:rust`, `uv`, launchers vs packages): export (#11) passes items through unchanged; reconciled in apply (#13, `apply_reconcile`).
+- `export_gate_snapshot` (lib/export.sh) duplicates the finding-report loop in `scan_manifest`; fold into one helper in #31.
 - libvirt sockets should group into one item; app-generated launchers (Docker, claude-code-url-handler) are noise.
 - `omadisplaylink` plugin origin is a local path, not cloneable elsewhere.
 - Schema validator needs `uvx`, `check-jsonschema` or python `jsonschema`; first uvx run needs network.

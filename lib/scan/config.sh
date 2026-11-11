@@ -37,15 +37,16 @@ config_category() {
   esac
 }
 
-# config_noise REL : true for backups, caches and paths another scanner owns
+# config_noise REL : true for backups, caches, logs, storage and database blobs, app state (persistence dirs) and paths another scanner owns
 config_noise() {
   local rel=$1 part IFS=/
   case $rel in omarchy/plugins | omarchy/plugins/*) return 0 ;; esac
   for part in $rel; do # any path component
     case $part in
       *.bak | *.bak.* | *.bak-* | *.orig | *.rej | *~ | *.swp | .\#* | .git | node_modules | __pycache__) return 0 ;;
-      *Cache | *Cache_Data | Dictionaries | cache | logs | Logs | "Local Storage" | "Session Storage" | IndexedDB | blob_storage | Crashpad | sentry | "Service Worker" | Partitions | leveldb) return 0 ;;
-      *.log | *.log.old | LOG | LOG.old | TransportSecurity | Cookies | Cookies-journal | "Network Persistent State") return 0 ;;
+      Cached* | cached_* | *Storage | "Shared Dictionary" | sand-* | *-persistence | "Crash Reports" | *Cache | *Cache_Data | Dictionaries | cache | logs | Logs | IndexedDB | blob_storage | Crashpad | sentry | "Service Worker" | Partitions | leveldb) return 0 ;;
+      *.log | *.log.* | *.log-* | LOG | LOG.old | TransportSecurity | Cookies | Cookies-journal | "Network Persistent State") return 0 ;;
+      *.blob | *.vscdb | *.vscdb.* | *.sqlite | *.sqlite3 | *.sqlite-* | *.db | *.db-* | *-wal | *-shm | *-journal) return 0 ;;
     esac
   done
   return 1
@@ -78,15 +79,10 @@ config_state() {
 config_item() {
   local rel=$1 status=$2 risk=$3 private=$4
   shift 4
-  jq -nc --arg rel "$rel" --arg path "$(tilde_path "$CONFIG_DIR/$rel")" --arg cat "$(config_category "$rel")" --arg status "$status" \
-    --arg risk "$risk" --argjson private "$private" --args '{
-      id: ("config:" + ($rel | gsub("\\s"; "_"))), name: $rel, kind: "config", category: "config", risk: $risk,
-      install: {type: "copy", path: $path, dest: ("~/.config/" + $rel)},
-      version: null,
-      provenance: {method: "adjacent-evidence", confidence: 0.9,
-                   evidence: (["category: " + $cat, "status: " + $status] + $ARGS.positional)},
-      private: $private
-    }' "$@"
+  local install
+  install=$(jq -nc --arg path "$(tilde_path "$CONFIG_DIR/$rel")" --arg rel "$rel" '{type: "copy", path: $path, dest: ("~/.config/" + $rel)}')
+  item_json "config:${rel//[[:space:]]/_}" "$rel" config config "$risk" "$install" "" adjacent-evidence 0.9 "$private" \
+    "category: $(config_category "$rel")" "status: $status" "$@"
 }
 
 # config_file_flags FILE REL : set CONFIG_RISK, CONFIG_PRIVATE, CONFIG_EVIDENCE (array) for a file that passed the path policy
@@ -227,7 +223,8 @@ config_walk() {
 
 scan_config() {
   local CONFIG_DIR=$HOME/.config
-  local CONFIG_OMARCHY=${STARTKIN_OMARCHY_DIR:-/usr/share/omarchy}
+  local CONFIG_OMARCHY
+  CONFIG_OMARCHY=$(omarchy_dir)
   local CONFIG_BASES=("${STARTKIN_SKEL_DIR:-/etc/skel}/.config" "$CONFIG_OMARCHY/config")
   local CONFIG_RISK CONFIG_PRIVATE CONFIG_EVIDENCE=()
   [[ -d $CONFIG_DIR ]] || { echo '[]'; return 0; }

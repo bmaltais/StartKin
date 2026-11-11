@@ -62,12 +62,11 @@ prov_skip_name() {
 
 # prov_pkg_owned PATH... : true when pacman says a package owns any of the paths (or their resolved targets)
 prov_pkg_owned() {
-  command -v pacman >/dev/null 2>&1 || return 1
   local p r
   for p in "$@"; do
     r=$(readlink -f -- "$p" 2>/dev/null || true)
-    pacman -Qo -- "$p" >/dev/null 2>&1 && return 0
-    [[ -n $r && $r != "$p" ]] && pacman -Qo -- "$r" >/dev/null 2>&1 && return 0
+    pacman_owns "$p" && return 0
+    [[ -n $r && $r != "$p" ]] && pacman_owns "$r" && return 0
   done
   return 1
 }

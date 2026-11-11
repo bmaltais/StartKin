@@ -26,13 +26,16 @@ Items carry `category`, `kind`, `risk` tags. A profile is a tag query plus user 
 AI classifies, groups, explains and flags target mismatches. It only handles items present in the manifest (output validated), never sees config file contents by default, and never runs commands. Local or cloud is a setting.
 
 ## Transport
-`tailscale status --json` for peers; manifest fetched over SSH (Tailscale SSH). Saved manifests in a repo are a possible offline path.
+`tailscale status --json` for peers; manifest fetched over SSH (Tailscale SSH). Saved manifests (snapshots) are supported alongside live peers: see Saved snapshots.
+
+## Saved snapshots
+Decided (#11): yes. A snapshot is just a manifest in a file, written by `startkin export --out FILE` (mode 600, replaced atomically). Cost is small because the manifest format is already the transport format: apply and peers fetch read the same JSON whether it came from a live peer or a file. `startkin export --from FILE` re-exports a snapshot after checking it is a manifest and running the same secrets gate, so a hand-edited or old file cannot smuggle a secret out. Snapshots hold no secrets by policy (`docs/secrets-policy.md`), but they still describe the whole machine (installed software, paths, hostname): keep them in a private repo, never a public one. A snapshot is stale the moment it is written; apply (#13/#14) must show its `generated_at` and `machine.omarchy_version` and compare them to the target (#15, #29).
 
 ## Apply order
-Packages, then tools from repos, then plugins, then config, then services. Config applies per item with diff preview and backup.
+Packages, then tools from repos, then plugins, then config, then services. Config applies per item with diff preview and backup (content is fetched from the peer at apply time; `startkin rollback` undoes a run; see docs/engine.md "Apply").
 
 ## Open questions
-- Online peer only, or also saved manifests?
+- ~~Online peer only, or also saved manifests?~~ Both: see Saved snapshots.
 - Local vs cloud AI default.
 - ~~Can a plugin run privileged installs (polkit/sudo)?~~ Answered in `docs/omarchy-plugins.md`: the host gives third-party plugins no privilege API (polkit is first-party only). Precedent (StartDrive, OmaDisplayLink) is `omarchy pkg add` inside a visible floating terminal (`omarchy-launch-floating-terminal-with-presentation`) so sudo prompts the user. Apply does the same; never `--yes` plugin installs blindly. Untested: `pkexec` from a plugin.
 - ~~Where is a plugin's source URL and version?~~ Answered in `docs/omarchy-plugins.md`: version in `manifest.json`, URL from the checkout's `origin` remote (git installs) or `homepage` (fallback); `listPlugins` exposes neither. Symlinked and copied installs are not reproducible by `omarchy plugin add`.

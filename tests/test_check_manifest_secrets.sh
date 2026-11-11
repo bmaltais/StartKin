@@ -56,6 +56,34 @@ test_copy_item_of_ordinary_path_passes() {
   assert_status 0 "$CHECK" "$T_TMP/m.json"
 }
 
+# Config items for files with long hashed names (Grok Bot, VS Code, sunshine state) must not trip high-entropy on
+# their identifier and path fields, which carry no content.
+test_identifier_and_path_fields_are_not_entropy_flagged() {
+  local rel="Grok Bot/sand-client-persistence/MFRGGZDFMZTWQ2LKNNWG23TPOBYXE43UOV3HO6DZPJ2Q7K4.blob"
+  jq -n --arg rel "$rel" '{schema_version: "1.0", machine: {hostname: "box"},
+    items: [{id: ("config:" + ($rel | gsub(" "; "_"))), name: $rel, kind: "config", category: "config", risk: "low",
+             install: {type: "copy", path: ("~/.config/" + $rel), dest: ("~/.config/" + $rel)},
+             provenance: {method: "adjacent-evidence", confidence: 0.9, evidence: []}}]}' >"$T_TMP/m.json"
+  assert_status 0 "$CHECK" "$T_TMP/m.json"
+}
+
+test_entropy_still_flags_content_fields() {
+  manifest_with '["blob = q8Zx3Lm9Kp2Wv7Rt4Yh1Jb6Qz5Nc"]'
+  assert_status 1 "$CHECK" "$T_TMP/m.json"
+  assert_contains "$T_ERR" "high-entropy"
+}
+
+test_identifier_fields_still_get_pattern_checks() {
+  local tok
+  tok="ghp_$(printf 'Ab1Cd2%.0s' {1..6})"
+  jq -n --arg t "config:$tok" '{schema_version: "1.0", machine: {hostname: "box"},
+    items: [{id: $t, name: "x", kind: "config", category: "config", risk: "low",
+             install: {type: "copy", path: "~/.config/x", dest: "~/.config/x"},
+             provenance: {method: "adjacent-evidence", confidence: 0.9, evidence: []}}]}' >"$T_TMP/m.json"
+  assert_status 1 "$CHECK" "$T_TMP/m.json"
+  assert_contains "$T_ERR" "github-token"
+}
+
 test_usage_and_missing_file() {
   assert_status 2 "$CHECK"
   assert_status 2 "$CHECK" "$T_TMP/nope.json"

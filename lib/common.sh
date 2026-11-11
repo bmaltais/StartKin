@@ -42,5 +42,13 @@ require_cmd() {
 # version : the engine version (from the VERSION file)
 version() { tr -d '[:space:]' <"$STARTKIN_ROOT/VERSION"; }
 
+# omarchy_dir : where Omarchy's shipped files live (STARTKIN_OMARCHY_DIR overrides, for tests)
+omarchy_dir() { echo "${STARTKIN_OMARCHY_DIR:-/usr/share/omarchy}"; }
+
 # now_utc : ISO 8601 UTC timestamp, second precision
 now_utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+# shellcheck source=item.sh
+source "$STARTKIN_ROOT/lib/item.sh"
+# shellcheck source=pacman.sh
+source "$STARTKIN_ROOT/lib/pacman.sh"

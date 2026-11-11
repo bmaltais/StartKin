@@ -15,7 +15,8 @@ launcher_field() {
 
 scan_launchers() {
   local dir=${HOME}/.local/share/applications
-  local base=${STARTKIN_OMARCHY_DIR:-/usr/share/omarchy}/applications
+  local base
+  base=$(omarchy_dir)/applications
   [[ -d $dir ]] || { echo '[]'; return 0; }
 
   local f file name exec_line hidden id tags items=()
@@ -34,14 +35,9 @@ scan_launchers() {
       *omarchy-launch-tui*) tags+=("omarchy tui") ;;
     esac
     id=launcher:${file//[[:space:]]/_}
-    items+=("$(jq -n --arg id "$id" --arg name "$name" --arg path "$(tilde_path "$f")" --arg file "$file" \
-      --args '{
-        id: $id, name: $name, kind: "launcher", category: "launcher", risk: "low",
-        install: {type: "copy", path: $path},
-        version: null,
-        provenance: {method: "adjacent-evidence", confidence: 0.8, evidence: (["file " + $file] + $ARGS.positional)},
-        private: false
-      }' "${tags[@]}")")
+    items+=("$(item_json "$id" "$name" launcher launcher low \
+      "$(jq -nc --arg p "$(tilde_path "$f")" '{type: "copy", path: $p}')" "" adjacent-evidence 0.8 false \
+      "file $file" "${tags[@]}")")
   done
-  if ((${#items[@]})); then printf '%s\n' "${items[@]}" | jq -s '.'; else echo '[]'; fi
+  items_join "${items[@]}"
 }
