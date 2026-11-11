@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "machine": {
+    "hostname": "example-host",
+    "omarchy_version": "3.0.0",
+    "arch": "x86_64",
+    "gpu": [],
+    "form_factor": "desktop"
+  },
+  "items": [
+    {
+      "id": "pacman:ripgrep",
+      "name": "ripgrep",
+      "kind": "cli",
+      "category": "package",
+      "risk": "low",
+      "install": { "type": "pacman", "package": "ripgrep" },
+      "version": "14.1.0-1",
+      "provenance": { "method": "package-manager", "confidence": 1, "evidence": ["pacman -Qe"] },
+      "private": false
+    }
+  ]
+}

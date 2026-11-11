@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Validate a StartKin manifest against schema/manifest.schema.json.
+# Usage: validate-manifest <file.json>
+# Exit 0 = valid, 1 = invalid, 2 = usage/tooling error.
+#
+# Backend, first one found wins:
+#   1. check-jsonschema on PATH
+#   2. uvx check-jsonschema (uv is on this machine; needs network on first run)
+#   3. python3 with the `jsonschema` module
+set -u
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+schema="$root/schema/manifest.schema.json"
+
+if [ $# -ne 1 ]; then
+  echo "usage: validate-manifest <file.json>" >&2
+  exit 2
+fi
+file="$1"
+if [ ! -f "$file" ]; then
+  echo "validate-manifest: no such file: $file" >&2
+  exit 2
+fi
+
+if command -v check-jsonschema >/dev/null 2>&1; then
+  exec check-jsonschema --schemafile "$schema" "$file"
+elif command -v uvx >/dev/null 2>&1; then
+  exec uvx --quiet check-jsonschema --schemafile "$schema" "$file"
+elif python3 -c 'import jsonschema' >/dev/null 2>&1; then
+  exec python3 -I - "$schema" "$file" <<'PY'
+import json, sys
+from jsonschema import Draft202012Validator
+schema = json.load(open(sys.argv[1]))
+doc = json.load(open(sys.argv[2]))
+errs = sorted(Draft202012Validator(schema).iter_errors(doc), key=lambda e: list(e.path))
+for e in errs:
+    print(f"{'/'.join(map(str, e.path)) or '<root>'}: {e.message}", file=sys.stderr)
+sys.exit(1 if errs else 0)
+PY
+else
+  echo "validate-manifest: need check-jsonschema, uvx, or python3 jsonschema" >&2
+  exit 2
+fi
