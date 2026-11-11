@@ -21,4 +21,6 @@ StartKin finds the Omarchy machines on your Tailscale network, shows what each o
 
 Bash + jq engine, see [docs/engine.md](docs/engine.md). Clone with `--recurse-submodules` (or `git submodule update --init`), run `./check` (shellcheck, `bash -n`, tests; tests alone: `tests/run.sh`), and `scripts/install-hooks` once per clone to run it on every commit.
 
+Untraced tools are confirmed once with `startkin adopt` and installs can be recorded with `startkin track install`: see [docs/adopt.md](docs/adopt.md).
+
 MIT licensed.

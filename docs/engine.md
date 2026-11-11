@@ -6,10 +6,12 @@ The engine is bash + jq (decision: no compiled language; revisit only if it outg
 
 | Path | Role |
 |---|---|
-| `bin/startkin` | Dispatcher: `scan`, `export`, `apply`, `peers`, `--version`, `--help`. Only `--version`, `--help` and `scan --json` are real; the rest print `not implemented` and exit 2. |
+| `bin/startkin` | Dispatcher: `scan`, `export`, `apply`, `peers`, `--version`, `--help`. `--version`, `--help`, `scan --json`, `adopt` and `track install` are real; the rest print `not implemented` and exit 2. |
 | `lib/common.sh` | Shared helpers: `log`, `warn`, `die [-c CODE]`, `require_cmd`, `version`, `now_utc`. |
 | `lib/machine.sh` | Machine info for the manifest header (hostname, Omarchy version from pacman, arch, GPU vendors from `lspci`, form factor). |
 | `lib/scan.sh` | Scanner discovery and manifest assembly. |
+| `lib/registry.sh` | User-confirmed provenance registry and the scan overlay (`docs/adopt.md`). |
+| `lib/adopt.sh`, `lib/track.sh`, `lib/ui.sh` | `adopt` and `track install` subcommands; gum/`read` prompts. |
 | `lib/scan/<name>.sh` | One scanner per file (see below). |
 | `VERSION` | Engine version. |
 

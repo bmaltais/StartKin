@@ -3,6 +3,8 @@
 # STARTKIN_SCAN_DIR overrides lib/scan (tests).
 # shellcheck shell=bash
 
+# scan_collect needs lib/registry.sh (registry_overlay), sourced by bin/startkin.
+
 # scan_dir : directory holding scanner files
 scan_dir() { echo "${STARTKIN_SCAN_DIR:-$STARTKIN_ROOT/lib/scan}"; }
 
@@ -24,8 +26,8 @@ scan_run_one() {
   printf '%s\n' "$out"
 }
 
-# scan_collect : print the merged JSON array of all scanners' items; returns 3 if any scanner failed.
-scan_collect() {
+# scan_collect_raw : print the merged JSON array of all scanners' items; returns 3 if any scanner failed.
+scan_collect_raw() {
   local dir f out rc=0 parts=()
   dir=$(scan_dir)
   shopt -s nullglob
@@ -35,6 +37,12 @@ scan_collect() {
   shopt -u nullglob
   if ((${#parts[@]})); then printf '%s\n' "${parts[@]}" | jq -s 'add'; else echo '[]'; fi
   return $rc
+}
+
+# scan_collect : scan_collect_raw with the user-confirmed registry overlaid (docs/adopt.md)
+scan_collect() {
+  scan_collect_raw | registry_overlay
+  return "${PIPESTATUS[0]}"
 }
 
 # scan_manifest : the full manifest on stdout; returns 3 if any scanner failed (manifest still complete for the rest).

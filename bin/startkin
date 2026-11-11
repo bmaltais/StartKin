@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# startkin: dispatcher. Subcommands are scan, export, apply, peers; see `startkin --help` and docs/engine.md.
+# startkin: dispatcher. Subcommands are scan, adopt, track, export, apply, peers; see `startkin --help` and docs/engine.md.
 set -uo pipefail
 
 STARTKIN_ROOT=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
@@ -8,8 +8,16 @@ export STARTKIN_ROOT
 source "$STARTKIN_ROOT/lib/common.sh"
 # shellcheck source=../lib/machine.sh
 source "$STARTKIN_ROOT/lib/machine.sh"
+# shellcheck source=../lib/registry.sh
+source "$STARTKIN_ROOT/lib/registry.sh"
 # shellcheck source=../lib/scan.sh
 source "$STARTKIN_ROOT/lib/scan.sh"
+# shellcheck source=../lib/ui.sh
+source "$STARTKIN_ROOT/lib/ui.sh"
+# shellcheck source=../lib/adopt.sh
+source "$STARTKIN_ROOT/lib/adopt.sh"
+# shellcheck source=../lib/track.sh
+source "$STARTKIN_ROOT/lib/track.sh"
 
 usage() {
   cat <<'EOF'
@@ -17,6 +25,8 @@ Usage: startkin <command> [options]
 
 Commands:
   scan [--json]   Detect what was added after the Omarchy install (--json: print the manifest)
+  adopt           Confirm where untraced items came from (see docs/adopt.md)
+  track install  Run an install and record its source, version and date
   export          Turn a manifest into a profile / install plan
   apply           Reproduce a manifest on this machine
   peers           List Tailscale peers that can share a manifest
@@ -25,7 +35,7 @@ Options:
   --version       Print the version
   -h, --help      Print this help
 
-Only --version, --help and `scan --json` are implemented so far.
+Implemented so far: --version, --help, `scan --json`, adopt, track.
 EOF
 }
 
@@ -49,6 +59,8 @@ main() {
     --version) echo "startkin $(version)" ;;
     -h | --help) usage ;;
     scan) shift; cmd_scan "$@" ;;
+    adopt) shift; cmd_adopt "$@" ;;
+    track) shift; cmd_track "$@" ;;
     export | apply | peers) not_implemented "$1" ;;
     "") usage >&2; exit 2 ;;
     *) printf 'startkin: unknown command: %s\n\n' "$1" >&2; usage >&2; exit 2 ;;
