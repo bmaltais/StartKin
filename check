@@ -36,4 +36,12 @@ else
 fi
 step "tests" tests/run.sh
 
+# Schema validator over schema/examples (scripts/validate-manifest picks its backend the same way).
+if command -v check-jsonschema >/dev/null 2>&1 || command -v uvx >/dev/null 2>&1 ||
+  python3 -c 'import jsonschema' >/dev/null 2>&1; then
+  step "schema examples" schema/test.sh
+else
+  echo "  skip  schema examples (no validator backend: install check-jsonschema, uv, or python3 jsonschema)"
+fi
+
 exit "$fail"
