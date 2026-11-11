@@ -20,9 +20,8 @@ Source of truth for scope is the GitHub issues and milestones; this file records
 ## Status (update below)
 Integration branch: `integration/m1-scanner`, draft PR #30 (closes the M1 tickets).
 
-Merged into the integration branch: #1, #2, #3, #4, #5, #6, #9.
-In progress at last update: #7, #28. Blocked: #8 (on #28), #10 (on #7).
-After all M1 tickets merge: run `code-review` on the integration branch, fix findings in one pass, mark PR #30 ready, clean up worktrees, then start M2.
+Merged into the integration branch: #1, #2, #3, #4, #5, #6, #7, #8, #9, #10 and #28 (all of M1). Code-review fixes since: scan output streams through file descriptors (no argv limits), `~`-relative paths, history evidence is the derived fact only, the pre-export secrets gate (exit 4), probing of binaries is opt-in (`--probe`), `scan --report`, `adopt --all`, schema tests in `./check`.
+Next: mark PR #30 ready, clean up worktrees, then start M2.
 
 ## Decisions
 - Engine is bash + jq; scanners are `lib/scan/<name>.sh` defining `scan_<name>` (docs/engine.md).
@@ -37,3 +36,6 @@ After all M1 tickets merge: run `code-review` on the integration branch, fix fin
 - `omadisplaylink` plugin origin is a local path, not cloneable elsewhere.
 - Schema validator needs `uvx`, `check-jsonschema` or python `jsonschema`; first uvx run needs network.
 - Creating several agent worktrees at once can race; launch them in smaller batches.
+- Follow-ups from the review, not yet done: a shared item-builder helper for the scanners (each builds its JSON by hand); naming and rename cleanups; consolidating the duplicated pacman helpers (`packages.sh`, `services.sh`, `provenance.sh`).
+- Scanning takes about 25 s on a real machine (many `pacman -Qo` / `jq` calls); worth batching.
+- Launcher and service items sit at confidence 0.7-0.8 and show up in `adopt --list`; decide in M3 whether they should.
