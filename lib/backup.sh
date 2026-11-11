@@ -5,6 +5,8 @@
 # ~/.local/state/startkin/backups/ID, mode 700, ID is a UTC timestamp). It holds a journal ("replaced|created<TAB>path", in
 # apply order) and a full copy of every file or directory that was replaced, under files/<path relative to home>.
 # A "hashes" file records "journal line<TAB>hash" of what apply left at each path, so rollback can tell a file edited since.
+# A "services" file lists the units apply newly enabled ("SCOPE<TAB>UNIT", scope user or system, one per line); a "dirs"
+# file lists the directories it created. Both are separate from the journal so an older startkin reads the set unchanged.
 # Rollback walks the journal backwards: restores what was replaced, removes what was created. It only touches paths inside home.
 # Needs lib/common.sh, ui.sh. Source this.
 # shellcheck shell=bash
@@ -56,6 +58,45 @@ backup_mkdir_p() {
     for p in "${missing[@]}"; do printf '%s\n' "$p" >>"$BACKUP_DIR/dirs"; done
   fi
   mkdir -p -- "$1"
+}
+
+# backup_record_service SCOPE UNIT : note a unit apply just enabled (it was not enabled before), so rollback can disable it
+backup_record_service() {
+  backup_begin || return 1
+  printf '%s\t%s\n' "$1" "$2" >>"$BACKUP_DIR/services"
+}
+
+# backup_services SET : the recorded units, newest first, as "SCOPE<TAB>UNIT"; malformed records are dropped
+backup_services() {
+  local scope unit
+  [[ -f $1/services ]] || return 0
+  while IFS=$'\t' read -r scope unit; do
+    [[ $scope == user || $scope == system ]] && apply_unit_ok "$unit" && printf '%s\t%s\n' "$scope" "$unit"
+  done < <(tac "$1/services")
+  return 0
+}
+
+# backup_disable_services SET : disable --now each recorded unit, then reset-failed, in its scope (system through the same
+# sudo/terminal helpers apply uses). Only recorded units are touched.
+backup_disable_services() {
+  local scope unit ctl cmd
+  while IFS=$'\t' read -r scope unit; do
+    ctl=(systemctl)
+    [[ $scope == user ]] && ctl+=(--user)
+    if [[ $scope == system ]]; then
+      cmd="$(apply_q sudo "${ctl[@]}" disable --now "$unit"); $(apply_q sudo "${ctl[@]}" reset-failed "$unit")"
+      apply_priv_exec "$cmd" || true
+    else
+      "${ctl[@]}" disable --now "$unit" || true
+      "${ctl[@]}" reset-failed "$unit" 2>/dev/null || true
+    fi
+    if "${ctl[@]}" is-enabled --quiet "$unit" 2>/dev/null; then
+      printf '  could not disable %s %s; disable it yourself\n' "$scope" "$unit"
+    else
+      printf '  disabled %s %s\n' "$scope" "$unit"
+    fi
+  done < <(backup_services "$1")
+  return 0
 }
 
 # backup_rmdirs SET : remove the directories apply created, deepest first, with rmdir only: a directory that is not empty
@@ -131,12 +172,13 @@ backup_summary() {
 
 BACKUP_USAGE='Usage: startkin rollback [ID|latest] [--yes] [--dry-run]
        startkin rollback --list
-  Undo a startkin apply run: restore the files it replaced from its backup and remove the files it created.
-  latest (default) is the newest set not yet rolled back. Packages, plugins and enabled services are not undone.'
+  Undo a startkin apply run: restore the files it replaced from its backup, remove the files it created and the directories it made.
+  latest (default) is the newest set not yet rolled back. It also disables (disable --now, reset-failed) the services that run enabled and that were not enabled before.
+  Installed packages and plugins are not undone.'
 
 # cmd_rollback [ID|latest] [--yes] [--dry-run] | --list
 cmd_rollback() {
-  local id="" yes=0 dry=0 list=0 set journal action dest want ln n=0
+  local id="" yes=0 dry=0 list=0 set journal action dest want ln n=0 scope unit
   while (($#)); do
     case $1 in
       -h | --help) echo "$BACKUP_USAGE"; return 0 ;;
@@ -174,9 +216,14 @@ cmd_rollback() {
     esac
     n=$((n + 1))
   done <"$journal"
+  while IFS=$'\t' read -r scope unit; do
+    printf '  disable  %s %s\n' "$scope" "$unit"
+    n=$((n + 1))
+  done < <(backup_services "$set")
   ((dry)) && { echo "(dry run: nothing changed)"; return 0; }
   if ! ((yes)) && ! ui_confirm "Roll back $n change(s)?"; then return 1; fi
 
+  backup_disable_services "$set"
   # Backwards, so a path touched twice ends as it was before the first change.
   while IFS=$'\t' read -r ln action dest; do
     want=$(backup_hash_of "$set" "$ln")

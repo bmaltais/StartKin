@@ -18,6 +18,11 @@ assert_contains() {
   [[ $1 == *"$2"* ]] || t_fail "${3:-assert_contains}: [$2] not in [$1]"
 }
 
+# assert_not_contains HAYSTACK NEEDLE [MESSAGE]
+assert_not_contains() {
+  [[ $1 != *"$2"* ]] || t_fail "${3:-assert_not_contains}: [$2] found in [$1]"
+}
+
 # assert_status EXPECTED_CODE COMMAND... : runs the command; stdout/stderr land in $T_OUT / $T_ERR
 assert_status() {
   local want=$1 got ofile efile

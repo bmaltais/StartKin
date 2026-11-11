@@ -450,4 +450,69 @@ test_user_unit_file_is_copied_from_the_peer_with_backup_then_enabled() {
   assert_contains "$T_OUT" "installed service:user:mine.service"
 }
 
+# ---- rollback of enabled services ---------------------------------------------------------------------------------------
+
+test_rollback_disables_the_services_apply_enabled() {
+  setup; answer y
+  mf "$(svc user foo.timer '{"type":"pacman","package":"foo"}')" "$(svc system cups.service '{"type":"pacman","package":"cups"}')"
+  assert_status 0 run_apply "$T_TMP/m.json" --yes
+  assert_contains "$T_OUT" "startkin rollback"
+  : >"$CALLS"
+  assert_status 0 run_apply_rollback latest --yes
+  assert_contains "$(calls)" "systemctl --user disable --now foo.timer"
+  assert_contains "$(calls)" "systemctl --user reset-failed foo.timer"
+  assert_contains "$(calls)" "sudo systemctl disable --now cups.service"
+  assert_contains "$(calls)" "sudo systemctl reset-failed cups.service"
+  assert_contains "$T_OUT" "disable  user foo.timer"
+  assert_contains "$T_OUT" "disable  system cups.service"
+  assert_contains "$T_OUT" "disabled user foo.timer"
+  assert_contains "$T_OUT" "disabled system cups.service"
+  assert_eq "" "$(cat "$T_TMP/enabled")"
+  assert_status 1 run_apply_rollback latest --yes
+}
+
+test_rollback_leaves_units_that_were_already_enabled_alone() {
+  setup; answer y
+  echo "pre.timer" >"$T_TMP/enabled"
+  mf "$(svc user pre.timer '{"type":"pacman","package":"pre"}')" "$(svc user new.timer '{"type":"pacman","package":"new"}')"
+  assert_status 0 run_apply "$T_TMP/m.json" --yes
+  : >"$CALLS"
+  assert_status 0 run_apply_rollback latest --yes
+  assert_contains "$(calls)" "disable --now new.timer"
+  assert_eq "" "$(only_calls 'pre.timer')"
+}
+
+test_rollback_dry_run_and_decline_leave_services_enabled() {
+  setup; answer y
+  mf "$(svc user foo.timer '{"type":"pacman","package":"foo"}')"
+  assert_status 0 run_apply "$T_TMP/m.json" --yes
+  : >"$CALLS"
+  assert_status 0 "$BIN" rollback latest --dry-run
+  assert_contains "$T_OUT" "disable  user foo.timer"
+  answer n
+  assert_status 1 run_apply_rollback latest
+  assert_eq "" "$(only_calls 'disable')"
+}
+
+test_rollback_of_a_set_without_a_services_file_touches_no_units() {
+  setup; answer y
+  mf "$(svc user foo.timer '{"type":"pacman","package":"foo"}')"
+  assert_status 0 run_apply "$T_TMP/m.json" --yes
+  rm -f "$STARTKIN_STATE_DIR"/backups/*/services
+  : >"$CALLS"
+  assert_status 0 run_apply_rollback latest --yes
+  assert_eq "" "$(only_calls 'disable')"
+}
+
+test_rollback_ignores_a_malformed_service_record() {
+  setup; answer y
+  mf "$(svc user foo.timer '{"type":"pacman","package":"foo"}')"
+  assert_status 0 run_apply "$T_TMP/m.json" --yes
+  printf 'user\t--now;rm\n' >>"$STARTKIN_STATE_DIR"/backups/*/services
+  : >"$CALLS"
+  assert_status 0 run_apply_rollback latest --yes
+  assert_eq "" "$(only_calls 'rm')"
+  assert_contains "$(calls)" "disable --now foo.timer"
+}
+
 run_tests

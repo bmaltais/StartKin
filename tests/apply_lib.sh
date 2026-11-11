@@ -31,6 +31,7 @@ if [[ "$1 $2 $3" == "pkg aur add" ]]; then shift 3; printf "%s\n" "$@" >>"$STATE
 case " $* " in
   *" is-enabled "*) grep -qxF -- "${*: -1}" "$T_TMP/enabled" 2>/dev/null ;;
   *" enable "*) printf "%s\n" "${*: -1}" >>"$T_TMP/enabled" ;;
+  *" disable "*) grep -vxF -- "${*: -1}" "$T_TMP/enabled" >"$T_TMP/enabled.new"; mv "$T_TMP/enabled.new" "$T_TMP/enabled" ;;
 esac'
   stub sudo 'echo "sudo $*" >>"$CALLS"; exec "$@"'
   local t

@@ -210,7 +210,7 @@ apply_stage_config() {
 # A service item is an enabled systemd unit. `pacman` means a package provides the unit: apply installs that package when it
 # is missing (one `omarchy pkg add` for all of them), then enables and starts the unit. `copy` is a user unit file: fetched
 # from the peer like config (with diff and backup), then daemon-reload and enable. System units go through sudo (visible
-# terminal when there is no tty), user units do not. Enabled services are not undone by `startkin rollback`.
+# terminal when there is no tty), user units do not. Units this run newly enabled are recorded in the backup set (`services`) so `startkin rollback` can disable them.
 
 apply_unit_ok() { [[ $1 =~ ^[A-Za-z0-9:_.@-]+\.(service|socket|timer|path)$ ]]; }
 
@@ -233,7 +233,7 @@ apply_services_packages() {
 }
 
 apply_stage_services() {
-  local item id scope unit type pkg ctl reload cmds c ok
+  local item id scope unit type pkg ctl reload cmds c ok was
   apply_services_packages "$1"
   while IFS= read -r -u 4 item; do
     id=$(apply_f "$item" .id) type=$(apply_f "$item" .install.type) reload=0
@@ -269,7 +269,9 @@ apply_stage_services() {
 
     ctl=(systemctl)
     [[ $scope == user ]] && ctl+=(--user)
-    if ((!reload)) && "${ctl[@]}" is-enabled --quiet "$unit" 2>/dev/null; then
+    was=0
+    "${ctl[@]}" is-enabled --quiet "$unit" 2>/dev/null && was=1
+    if ((!reload && was)); then
       apply_record "$id" present "already enabled"
       continue
     fi
@@ -285,6 +287,13 @@ apply_stage_services() {
     done
     ok=0
     "${ctl[@]}" is-enabled --quiet "$unit" 2>/dev/null && ok=1
-    if ((ok)); then apply_record "$id" installed "enabled and started"; else apply_record "$id" failed "not enabled afterwards"; fi
+    if ((ok)); then
+      # Only a unit that was not enabled before is recorded, so rollback never disables what the user already had.
+      ((was)) || backup_record_service "$scope" "$unit"
+      apply_record "$id" installed "enabled and started"
+    else
+      apply_record "$id" failed "not enabled afterwards"
+      [[ $scope == system ]] && apply_terminal_failure
+    fi
   done 4< <(jq -c '.[]' <<<"$1")
 }

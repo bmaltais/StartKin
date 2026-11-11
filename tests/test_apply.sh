@@ -96,6 +96,36 @@ test_floating_terminal_when_no_tty() {
   assert_contains "$(calls)" "float $T_BIN/omarchy pkg add ripgrep"
 }
 
+# A float stub that spews ghostty-style debug noise on stdout and stderr, then runs the command.
+noisy_float() {
+  export STARTKIN_FLOAT_CMD=$T_BIN/float
+  stub float 'echo "float $*" >>"$CALLS"; echo "info(opengl): EGL extensions=x"; echo "warning(io_exec): odd" >&2; '"$1"
+}
+
+test_floating_terminal_noise_goes_to_a_log_not_the_output() {
+  setup; answer y
+  noisy_float 'bash -c "$1"'
+  mf "$(pac ripgrep)"
+  assert_status 0 run_apply "$T_TMP/m.json"
+  assert_not_contains "$T_OUT" "info(opengl)"
+  assert_not_contains "$T_OUT" "warning(io_exec)"
+  assert_not_contains "$T_ERR" "io_exec"
+  assert_not_contains "$T_ERR" "opengl"
+  assert_not_contains "$T_OUT" "apply-terminal.log"
+  assert_contains "$(cat "$STARTKIN_STATE_DIR/apply-terminal.log")" "info(opengl): EGL extensions=x"
+  assert_contains "$(cat "$STARTKIN_STATE_DIR/apply-terminal.log")" "warning(io_exec): odd"
+}
+
+test_failed_floating_install_names_the_log_and_shows_its_tail() {
+  setup; answer y
+  noisy_float 'exit 1'
+  mf "$(pac ripgrep)"
+  assert_status 1 run_apply "$T_TMP/m.json"
+  assert_contains "$T_OUT" "failed    pacman:ripgrep"
+  assert_contains "$T_OUT" "$STARTKIN_STATE_DIR/apply-terminal.log"
+  assert_contains "$T_OUT" "info(opengl): EGL extensions=x"
+}
+
 test_registry_tools_pinned_and_run() {
   setup; answer y
   mf "$(it cargo:bat registry-tool cli '{"type":"cargo","crate":"bat","locked":true}' 0.24.0)" \

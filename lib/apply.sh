@@ -119,8 +119,26 @@ apply_priv_exec() {
   if apply_in_terminal; then
     bash -c "$1"
   else
-    "$(apply_float)" "$1"
+    # The launcher's own output (ghostty debug logs) is noise: keep it in a log, shown only when something failed.
+    local log
+    log=$(apply_terminal_log)
+    mkdir -p -- "$(dirname -- "$log")" 2>/dev/null
+    printf '== %s\n' "$1" >>"$log" 2>/dev/null
+    "$(apply_float)" "$1" >>"$log" 2>&1
   fi
+}
+
+# apply_terminal_log : where the floating terminal launcher's output goes
+apply_terminal_log() { echo "${STARTKIN_STATE_DIR:-$HOME/.local/state/startkin}/apply-terminal.log"; }
+
+# apply_terminal_failure : after a failed install through the floating terminal, name the log and show its last lines
+apply_terminal_failure() {
+  local log
+  log=$(apply_terminal_log)
+  apply_in_terminal && return 0
+  [[ -s $log ]] || return 0
+  printf '  floating terminal output (last 10 lines of %s):\n' "$log"
+  tail -n 10 -- "$log" | sed 's/^/    /'
 }
 
 # apply_priv_line CMD : what apply_priv_exec will run, as shown to the user
@@ -419,10 +437,11 @@ apply_pkg_batch() {
   fi
   apply_priv_exec "$cmd" || true
   # The exit status of a floating terminal says little: check what is actually installed.
-  local i
+  local i bad=0
   for i in "${!pkgs[@]}"; do
-    if pacman -Qq -- "${pkgs[$i]}" >/dev/null 2>&1; then apply_record "${ids[$i]}" installed ""; else apply_record "${ids[$i]}" failed "not installed afterwards"; fi
+    if pacman -Qq -- "${pkgs[$i]}" >/dev/null 2>&1; then apply_record "${ids[$i]}" installed ""; else apply_record "${ids[$i]}" failed "not installed afterwards"; bad=1; fi
   done
+  ((!bad)) || apply_terminal_failure
 }
 
 # apply_present_note : why "already installed" may be a surprise when the Omarchy versions differ
