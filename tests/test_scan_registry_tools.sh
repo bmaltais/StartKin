@@ -120,6 +120,13 @@ fi'
     '["go:example.com/org/mytool/cmd/mytool","mytool","v1.2.3",{"type":"go","module":"example.com/org/mytool/cmd/mytool"},"build-metadata"]' "$out"
 }
 
+test_go_toolchain_binaries_skipped() {
+  default_stubs
+  printf 'x' >"$GOBIN/gofmt"; chmod +x "$GOBIN/gofmt"
+  stub go 'printf "%s: go1.22.0\n\tpath\tcmd/gofmt\n\tmod\tstd\t\n" "$3"'
+  assert_json_eq '.' '[]' "$(scan_registry_tools 2>/dev/null)"
+}
+
 test_go_devel_version_is_null() {
   default_stubs
   printf 'x' >"$GOBIN/mytool"; chmod +x "$GOBIN/mytool"
