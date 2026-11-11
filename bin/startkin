@@ -18,6 +18,8 @@ source "$STARTKIN_ROOT/lib/ui.sh"
 source "$STARTKIN_ROOT/lib/adopt.sh"
 # shellcheck source=../lib/track.sh
 source "$STARTKIN_ROOT/lib/track.sh"
+# shellcheck source=../lib/peers.sh
+source "$STARTKIN_ROOT/lib/peers.sh"
 
 usage() {
   cat <<'EOF'
@@ -32,13 +34,16 @@ Commands:
   track install  Run an install and record its source, version and date
   export          Turn a manifest into a profile / install plan
   apply           Reproduce a manifest on this machine
-  peers           List Tailscale peers that can share a manifest
+  peers [--json] [--no-probe]
+                  List Tailscale peers (Linux) and the startkin version each online one runs
+  peers fetch PEER
+                  Print PEER's manifest (runs `startkin scan --json` over SSH)
 
 Options:
   --version       Print the version
   -h, --help      Print this help
 
-Implemented so far: --version, --help, `scan --json`, adopt, track.
+Implemented so far: --version, --help, `scan --json`, adopt, track, peers.
 EOF
 }
 
@@ -73,7 +78,8 @@ main() {
     scan) shift; cmd_scan "$@" ;;
     adopt) shift; cmd_adopt "$@" ;;
     track) shift; cmd_track "$@" ;;
-    export | apply | peers) not_implemented "$1" ;;
+    peers) shift; require_cmd jq; cmd_peers "$@" ;;
+    export | apply) not_implemented "$1" ;;
     "") usage >&2; exit 2 ;;
     *) printf 'startkin: unknown command: %s\n\n' "$1" >&2; usage >&2; exit 2 ;;
   esac
