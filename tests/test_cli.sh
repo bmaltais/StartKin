@@ -78,6 +78,30 @@ test_scan_overlays_registry() {
   assert_json_eq '.items[1].provenance.method' '"none"' "$T_OUT"
 }
 
+# 1500 items of ~800 bytes: well over 1 MB, far past the per-argument and total argv limits.
+test_scan_json_survives_huge_item_list() {
+  mkdir "$T_TMP/s"
+  # shellcheck disable=SC2016 # the scanner body expands when it runs
+  echo 'scan_big() { jq -nc "[range(1500) | {id: (\"big:\" + tostring), name: (\"x\" * 800)}]"; }' >"$T_TMP/s/big.sh"
+  # Not assert_status: it would put >1 MB into $T_OUT, which is exported and would break every later exec.
+  STARTKIN_SCAN_DIR=$T_TMP/s "$BIN" scan --json >"$T_TMP/out.json" 2>"$T_TMP/err"
+  assert_eq 0 "$?" "exit status"
+  assert_eq 1500 "$(jq '.items | length' "$T_TMP/out.json")"
+  (($(stat -c %s "$T_TMP/out.json") > 1000000)) || t_fail "output under 1 MB"
+}
+
+test_scan_json_fails_loudly_when_assembly_fails() {
+  mkdir "$T_TMP/s"
+  echo "scan_t() { echo '[{\"id\":\"t\"}]'; }" >"$T_TMP/s/t.sh"
+  local real
+  real=$(command -v jq)
+  # a jq that dies only while building the final manifest
+  # shellcheck disable=SC2016 # the stub body expands when it runs
+  stub jq 'for a in "$@"; do [[ $a == *schema_version* ]] && { echo "jq: boom" >&2; exit 5; }; done; exec '"$real"' "$@"'
+  STARTKIN_SCAN_DIR=$T_TMP/s assert_status 1 "$BIN" scan --json
+  assert_eq "" "$T_OUT"
+}
+
 test_scan_json_validates_against_schema() {
   mkdir "$T_TMP/empty"
   STARTKIN_SCAN_DIR=$T_TMP/empty "$BIN" scan --json >"$T_TMP/m.json"

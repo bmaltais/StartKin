@@ -69,8 +69,9 @@ registry_overlay() {
     printf '%s\n' "$items"
     return 0
   fi
-  jq -c --argjson reg "$(jq -c .entries <<<"$doc")" '
-    map(. as $i | ($reg[$i.id // ""]) as $e
+  # the entries go in through a file descriptor: a big registry would exceed the argv limit
+  jq -c --slurpfile reg <(jq -c .entries <<<"$doc") '
+    map(. as $i | ($reg[0][$i.id // ""]) as $e
       | if $e == null then $i else
           $i + {install: $e.install,
                 version: ($e.version // $i.version // null),

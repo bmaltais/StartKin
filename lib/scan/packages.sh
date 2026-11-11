@@ -67,8 +67,8 @@ scan_packages() {
   foreign=$(pacman -Qemq 2>/dev/null)
 
   jq -Rn \
-    --arg base "$baseline" \
-    --arg foreign "$foreign" \
+    --rawfile base <(printf '%s\n' "$baseline") \
+    --rawfile foreign <(printf '%s\n' "$foreign") \
     --rawfile repos <(LC_ALL=C pacman -Sl 2>/dev/null | awk '{ print $2 "\t" $1 }') \
     --arg helper "$helper" \
     --arg basever "$base_ver" '

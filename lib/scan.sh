@@ -35,27 +35,38 @@ scan_collect_raw() {
     if out=$(scan_run_one "$f"); then parts+=("$out"); else rc=3; fi
   done
   shopt -u nullglob
-  if ((${#parts[@]})); then printf '%s\n' "${parts[@]}" | jq -s 'add'; else echo '[]'; fi
+  if ((${#parts[@]})); then
+    # printf is a builtin, so the size of the parts is not bounded by the kernel's argv limit
+    printf '%s\n' "${parts[@]}" | jq -s 'add' || return 1
+  else
+    echo '[]'
+  fi
   return $rc
 }
 
 # scan_collect : scan_collect_raw with the user-confirmed registry overlaid (docs/adopt.md)
 scan_collect() {
+  local rc=0 ovl=0
   scan_collect_raw | registry_overlay
-  return "${PIPESTATUS[0]}"
+  rc=${PIPESTATUS[0]} ovl=${PIPESTATUS[1]}
+  ((ovl)) && return 1
+  return "$rc"
 }
 
 # scan_manifest : the full manifest on stdout; returns 3 if any scanner failed (manifest still complete for the rest).
 scan_manifest() {
   local items rc=0
   items=$(scan_collect) || rc=$?
+  # 1 means collection itself broke (scanner failures are 3): print nothing rather than a partial manifest.
+  ((rc == 0 || rc == 3)) || return "$rc"
+  # Items go in through a file descriptor: a real machine's manifest is far over the argv size limits.
   jq -n \
     --arg at "$(now_utc)" \
-    --argjson machine "$(machine_json)" \
-    --argjson items "$items" \
+    --slurpfile machine <(machine_json) \
+    --slurpfile items <(printf '%s\n' "$items") \
     '{schema_version: "1.0",
       generated_at: $at,
-      machine: $machine,
-      items: $items}'
+      machine: $machine[0],
+      items: $items[0]}' || return 1
   return $rc
 }

@@ -83,6 +83,16 @@ test_overlay_replaces_provenance() {
   assert_json_eq '.[1].provenance.method' '"none"' "$out" "unlisted items untouched"
 }
 
+test_overlay_handles_registry_over_argv_limit() {
+  setup
+  mkdir -p "$T_TMP/reg"
+  # 3000 entries: the entries object alone is far over the 128 KB per-argument limit
+  jq -nc '{schema_version: "1.0", entries: ([range(3000) | {key: ("id:" + tostring), value: {origin: "adopt", install: {type: "git-build", url: ("https://github.com/o/" + ("r" * 60))}, version: null, recorded_at: "2026-01-01T00:00:00Z"}}] | from_entries)}' >"$STARTKIN_REGISTRY_FILE"
+  local out
+  out=$(registry_overlay <<<'[{"id":"id:2999","provenance":{"method":"none","confidence":0,"evidence":[]}}]')
+  assert_json_eq '.[0].provenance.method' '"user"' "$out"
+}
+
 test_overlay_keeps_scanned_version_when_entry_has_none() {
   setup
   registry_put "a" "$GIT" "" adopt

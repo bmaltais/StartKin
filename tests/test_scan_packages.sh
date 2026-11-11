@@ -80,6 +80,15 @@ test_no_omarchy_package_means_unknown_baseline() {
   assert_contains "$(<"$T_TMP/err")" "no omarchy package"
 }
 
+test_huge_baseline_does_not_hit_argv_limit() {
+  setup_machine
+  # a baseline list over 128 KB (the per-argument limit)
+  seq 1 20000 | sed 's/^/some-baseline-package-/' >>"$T_TMP/omarchy/install/omarchy-other.packages"
+  local j
+  j=$(scan_packages 2>&1)
+  assert_json_eq 'map(.name) | sort' '["aurtool","libfoo","ripgrep"]' "$j"
+}
+
 test_output_validates() {
   setup_machine
   local j

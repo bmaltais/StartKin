@@ -98,12 +98,12 @@ scan_plugins() {
 
     items+=("$(jq -nc \
       --arg id "$id" --arg name "${name:-$id}" --arg version "$version" \
-      --argjson install "$install" --arg method "$method" --argjson conf "$conf" \
-      --argjson evidence "$(printf '%s\n' "${evidence[@]}" | jq -R . | jq -sc .)" \
+      --slurpfile install <(printf '%s\n' "$install") --arg method "$method" --argjson conf "$conf" \
+      --slurpfile evidence <(printf '%s\n' "${evidence[@]}" | jq -R . | jq -sc .) \
       '{id: ("plugin:" + $id), name: $name, kind: "plugin", category: "plugin",
-        risk: "high", install: $install,
+        risk: "high", install: $install[0],
         version: (if $version == "" then null else $version end),
-        provenance: {method: $method, confidence: $conf, evidence: $evidence},
+        provenance: {method: $method, confidence: $conf, evidence: $evidence[0]},
         private: false}')")
   done < <(plugin_dirs)
 
